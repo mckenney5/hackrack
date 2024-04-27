@@ -2,6 +2,7 @@ Hack Rack
 ==============
 _A web based hacking sim_
 
+![screen_shot](https://github.com/mckenney5/hackrack/blob/8bc85cc5d46810251f5dcf674e0cf4f5f4049618/screenshot.png)
 
 ## Description
 This is a single player game where the player completes missions to 
