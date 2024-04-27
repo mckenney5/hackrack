@@ -1,0 +1,87 @@
+body, html{
+  height: 100%;
+  margin: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background-color: #E3E1C9; /*#505050;*/
+}
+.terminal-container {
+  width: 1200px;
+  height: 800px;
+  border: 15px solid #c6c5b3;
+  overflow-y: scroll;
+  background-color: #000;
+  z-index: 10;
+
+}
+
+.terminal {
+  background-color: #000;
+  color: #fff;
+  font-family: monospace;
+  padding: 10px;
+  text-align: left;
+  font-size: 18px;
+  
+}
+
+.input {
+  width: calc(100% - 20px);
+  padding: 5px;
+  font-family: monospace;
+  border: none;
+  outline: none;
+  background-color: #000;
+  color: #fff;
+  font-size: 18px;
+}
+
+.output {
+  color: lightGrey;
+}
+
+.mail {
+  color: white;
+}
+
+.error {
+  color: red;
+}
+
+.system_file {
+  color: maroon;
+}
+
+.prompt {
+  color: white;
+}
+
+.cmd {
+  font-style: italic;
+  color: limegreen;
+}
+
+.meta {
+  color: limegreen;
+  font-style: bold;
+}
+
+.bottom {
+    position: fixed;  /* Fixed positioning to keep it at the bottom right regardless of scrolling */
+    bottom: 0; /* Align to the bottom */
+    right: 0; /* Align to the right */
+    padding: 5px; /* Add some padding for better readability */
+    color: grey; /* Text color */
+    font-size: 24px;
+}
+
+.on {
+  color: limegreen;
+  font-size: 144px;
+}
+
+.hdd {
+  color: red;
+  font-size: 144px;
+}
