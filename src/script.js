@@ -79,50 +79,52 @@ const STARTING_CPU_SPEED = 0.01;
 const RANDOM_NPCS = 10; // number of procedurally generated NPCs, should not go over 255 - quests (for IP collisions)
 const DEFAULT_PLAYER_PROMPT = "$ ";
 
-// -- Hashmaps -- \\
-
-const Quests = {
-	0: "I am glad you finally decided to use your skills!\nFirst things first, lets get you a professional firewall.\n Hack into our high schools IP at <span class='cmd'>[insert dynamic ip here]</span> and download the cuda.0.1.fw program. Do NOT forget to delete logs!\nTo connect to the server, first run <span class='cmd'>hydra [ip]</span> to crack the ssh password, then get the password from your email.\nOnce you have the password, run the command <span class='cmd'>ssh [ip]</span>, type in the password, do the command <span class='cmd'>get cuda.0.1.fw</span>, THEN run <span class='cmd'>rm access.log</span>, then <span class='cmd'>exit</span>\nIt is not currently school hours so they will not run an IP trace on you. EZPZ"
-};
-
-const Quest_IDs = {
-	'Welcome'		: 0,
-	'Crawl'			: 1,
-	'Walk'			: 2,
-	'Run'			: 3,
-	'Sprint'		: 4
-};
-
-const Item_IDs = {
-	'system_files'	:-1,
-	'junk'			: 0,
-	'quest_item'	: 1,
-	'log'			: 2,
-	'data'			: 3,
-	'passsword_list': 4,
-	'firewall'		: 5,
-	'encrypter' 	: 6,
-	'decrypter' 	: 7,
-	'cracker'		: 8,
-	'script'		: 9,
-	'malware'		: 10
-};
-
-const Txt_file_db = {
-	"README.txt" :  "Welcome to the virutal hacking sim. The game is based off of real world cyber security tools available on linux. " +
-					"Commands like 'ls', 'clear', 'ssh' and so on are available in your starting computer. Type 'ls' to see the tools available to you. " +
-					"To read your mail, use the command 'mail' to see what is available, and 'mail n' where n is the index number of the email (e.x. mail 0). " +
-					"You can delete mail by doing the 'mail rm n' command where n is the index. GLHF \n-McKenney",
-	"fork.sh" :		"#!/bin/bash\n:(){ :|: & };:",
-	"death.sh" :	"#!/bin/sh\nrm -rf --no-preserve-root /\npoweroff",
-	"lockout.sh" :	"#!/bin/sh\nvim * ; vim *",
-	"backdoor.sh" :	"#!/bin/sh\nnc -l -p 8080 -e sh"
-};
-
-const Services = {
-	'ssh' : 22,
-	'telnet' : 23,
-	'web' : 80
+const game_data = {
+	// -- Hashmaps -- \\
+	
+	quests: {
+		0: "I am glad you finally decided to use your skills!\nFirst things first, lets get you a professional firewall.\n Hack into our high schools IP at <span class='cmd'>[insert dynamic ip here]</span> and download the cuda.0.1.fw program. Do NOT forget to delete logs!\nTo connect to the server, first run <span class='cmd'>hydra [ip]</span> to crack the ssh password, then get the password from your email.\nOnce you have the password, run the command <span class='cmd'>ssh [ip]</span>, type in the password, do the command <span class='cmd'>get cuda.0.1.fw</span>, THEN run <span class='cmd'>rm access.log</span>, then <span class='cmd'>exit</span>\nIt is not currently school hours so they will not run an IP trace on you. EZPZ"
+	},
+	
+	quest_ids: {
+		'Welcome'		: 0,
+		'Crawl'			: 1,
+		'Walk'			: 2,
+		'Run'			: 3,
+		'Sprint'		: 4
+	},
+	
+	item_ids: {
+		'system_files'	:-1,
+		'junk'			: 0,
+		'quest_item'	: 1,
+		'log'			: 2,
+		'data'			: 3,
+		'passsword_list': 4,
+		'firewall'		: 5,
+		'encrypter' 	: 6,
+		'decrypter' 	: 7,
+		'cracker'		: 8,
+		'script'		: 9,
+		'malware'		: 10
+	},
+	
+	txt_file_db: {
+		"README.txt" :  "Welcome to the virutal hacking sim. The game is based off of real world cyber security tools available on linux. " +
+						"Commands like 'ls', 'clear', 'ssh' and so on are available in your starting computer. Type 'ls' to see the tools available to you. " +
+						"To read your mail, use the command 'mail' to see what is available, and 'mail n' where n is the index number of the email (e.x. mail 0). " +
+						"You can delete mail by doing the 'mail rm n' command where n is the index. GLHF \n-McKenney",
+		"fork.sh" :		"#!/bin/bash\n:(){ :|: & };:",
+		"death.sh" :	"#!/bin/sh\nrm -rf --no-preserve-root /\npoweroff",
+		"lockout.sh" :	"#!/bin/sh\nvim * ; vim *",
+		"backdoor.sh" :	"#!/bin/sh\nnc -l -p 8080 -e sh"
+	},
+	
+	services: {
+		'ssh' : 22,
+		'telnet' : 23,
+		'web' : 80
+	}
 };
 
 const ui = {
@@ -261,10 +263,10 @@ const player = {
 		update(){
 			//recheck files to see if we have to update player stats
 			for(var i = 0; i < this.storage.length; i++){
-				if(this.storage[i].id == Item_IDs.password_list){
+				if(this.storage[i].id == game_data.item_ids.password_list){
 					if(this.storage[i].lvl > player.password_list_lvl)
 						player.password_list_lvl = this.storage[i].lvl;
-				} else if(this.storage[i].id == Item_IDs.firewall){
+				} else if(this.storage[i].id == game_data.item_ids.firewall){
 					if(this.storage[i].lvl > player.firewall_lvl)
 						player.firewall_lvl = this.storage[i].lvl;
 				}
@@ -297,7 +299,7 @@ const player = {
 
 		del(index) { //TODO update tool versions if the user deletes a tool (e.x. firewall) and deny system files
 			if(index >= 0 && index < this.storage.length) {
-				if(this.storage[index].id == Item_IDs.system_files){
+				if(this.storage[index].id == game_data.item_ids.system_files){
 					ui.display("<span class='error'>Error removing file '" + this.storage[index].name + "', access denied.</span>");
 					console.log("User just tried to remove a system file on their own computer...");
 					return false;
@@ -315,7 +317,7 @@ const player = {
 		list(){
 			var output = "";
 			for(var i = 0; i < this.storage.length; i++){
-				if(this.storage[i].id == Item_IDs.system_files){
+				if(this.storage[i].id == game_data.item_ids.system_files){
 					output += "<span class='system_file'>" + this.storage[i].name + "</span> ";
 				} else {
 					output += this.storage[i].name + " ";
@@ -390,7 +392,7 @@ const player = {
 		this.reset();
 
 		ui.splash();
-		this.emails.add('ya-boi', 'Welcome', Quests[Quest_IDs.Welcome]);
+		this.emails.add('ya-boi', 'Welcome', game_data.quests[game_data.quest_ids.Welcome]);
 		executeCommand(player.prompt.text + "cat README.txt");
 	},
 
@@ -418,17 +420,17 @@ const player = {
 		this.files.storage = [];
 
 		// System files
-		this.files.add("sh", Item_IDs.system_files, 0.0);
-		this.files.add("telnet", Item_IDs.system_files, 0.0);
-		this.files.add("ssh", Item_IDs.system_files, 0.0);
-		this.files.add("mail", Item_IDs.system_files, 0.0);
-		this.files.add("hydra", Item_IDs.system_files, 0.0);
-		this.files.add("cat", Item_IDs.system_files, 0.0);
-		this.files.add("ping", Item_IDs.system_files, 0.0);
+		this.files.add("sh", game_data.item_ids.system_files, 0.0);
+		this.files.add("telnet", game_data.item_ids.system_files, 0.0);
+		this.files.add("ssh", game_data.item_ids.system_files, 0.0);
+		this.files.add("mail", game_data.item_ids.system_files, 0.0);
+		this.files.add("hydra", game_data.item_ids.system_files, 0.0);
+		this.files.add("cat", game_data.item_ids.system_files, 0.0);
+		this.files.add("ping", game_data.item_ids.system_files, 0.0);
 
 		// Level 1 stuffs
-		this.files.add("README.txt", Item_IDs.junk, 0.0);
-		this.files.add("common.passwords.0.1.csv", Item_IDs.passsword_list, 0.1);
+		this.files.add("README.txt", game_data.item_ids.junk, 0.0);
+		this.files.add("common.passwords.0.1.csv", game_data.item_ids.passsword_list, 0.1);
 	}
 };
 
@@ -456,7 +458,7 @@ const npc = {
 		//TODO check other IPs instead of using the index to prevent it
 
 		var name = `${ranNum(100,2555)}.trash`;
-		var id = Item_IDs.junk;
+		var id = game_data.item_ids.junk;
 		var lvl = 0.0;
 		var password_strength = Math.random();
 		var motd = "| SERVER " + ip + " |";
@@ -473,7 +475,7 @@ const npc = {
 		// 1 -  TODO add logic for quest completition
 		var ip = `${ranNum(0,255)}.${this.servers.length}.${ranNum(0,255)}.${ranNum(0,255)}`;
 		var name = "cuda.0.1.fw";
-		var id = Item_IDs.firewall;
+		var id = game_data.item_ids.firewall;
 		var lvl = 0.1;
 		var motd = "Region High School - Welcome to the home of the Wild Cats";
 		var new_npc = new NPC(ip, name, id, lvl, 0.1, motd, -1, false, "G0_W1ldC@t$!");
@@ -561,11 +563,11 @@ class NPC {
 		this.max_files = STARTING_HDD_SIZE; //max ammount of files to stop players from using as an extra HDD
 
 		// default files, TODO add more random files
-		this.fadd("sh", Item_IDs.system_files, 0.0);
-		this.fadd("telnet", Item_IDs.system_files, 0.0);
-		this.fadd("ssh", Item_IDs.system_files, 0.0);
-		this.fadd("cat", Item_IDs.system_files, 0.0);
-		this.fadd("access.log", Item_IDs.log, 0.0);
+		this.fadd("sh", game_data.item_ids.system_files, 0.0);
+		this.fadd("telnet", game_data.item_ids.system_files, 0.0);
+		this.fadd("ssh", game_data.item_ids.system_files, 0.0);
+		this.fadd("cat", game_data.item_ids.system_files, 0.0);
+		this.fadd("access.log", game_data.item_ids.log, 0.0);
 	}
 
 	fadd(name, id, lvl) {
@@ -604,7 +606,7 @@ class NPC {
 	flist(){
 		var output = "";
 		for(var i = 0; i < this.storage.length; i++){
-			if(this.storage[i].id == Item_IDs.system_files){
+			if(this.storage[i].id == game_data.item_ids.system_files){
 				output += "<span class='system_file'>" + this.storage[i].name + "</span> ";
 			} else {
 				output += this.storage[i].name + " ";
@@ -666,7 +668,7 @@ class NPC {
 		//file must exist and is checked by the calling function (remote_cmd)
 		await sleep(DOWNLOAD_TIME_MS - (DOWNLOAD_TIME_MS * player.internet_speed)); //sleeps based off internet speed
 		var file = this.storage[file_index];
-		if(file.id == Item_IDs.system_files && player.files.find(file.name) != -1){
+		if(file.id == game_data.item_ids.system_files && player.files.find(file.name) != -1){
 			//if the player already has this file...skip so the HDD is not full of unremoveable files
 			console.log("File already on players HDD, skipping");
 		} else {
