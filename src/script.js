@@ -22,7 +22,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-/*jshint esversion: 6 */
+// Lint settings (version, and ignoring the one eval() call)
+/* jshint esversion: 8 */
+/* jshint -W061 */
 
 /*
  * --- TODO ---
@@ -46,7 +48,8 @@ SOFTWARE.
  * 	- mail send (opens up a mail wizard to send data, should follow smtp protocol (e.x. MAILTO))
  * 	- poweroff (exits game, if remote and root - turns off server for some ammount of time)
  * 	- rss (makes news pop up, should add things about defacement, stocks, etc)
- * 	- neofetch (disaplys info about the targeted computer)
+ * 	- neofetch (dispalys info about the targeted computer)
+ *  - Add bash && and &
  *
  * - Missions -
  * 	- Welcome: hack a high schools network switch and download their firewall
@@ -144,6 +147,7 @@ const ui = {
 		text += "</p>";
 		this.terminal.innerHTML += text;
 		this.terminal.scrollTop = terminal.scrollHeight;
+		if(!this.block) input.value = player.prompt.text;
 	},
 
 	handleInput(e) {
@@ -183,7 +187,7 @@ const ui = {
 		}
 	},
 
-	toggle_block(){
+	toggle_block(enabled=this.block){
 		if(this.block){
 			this.block = false;
 			input.disabled = false;
@@ -203,6 +207,7 @@ const ui = {
 
 	init(){
 		input.addEventListener('keydown', this.handleInput);
+		input.value = player.prompt.text;
 	}
 
 };
@@ -495,19 +500,19 @@ const npc = {
 		for(var i = 0; i < RANDOM_NPCS; i++){
 			this.gen_random();
 		}
-		console.log(this.servers)
+		console.log(this.servers);
 		console.log("Done");
 	},
 
 	async ping(ip){
 		// The ammount of realism I put in this in insane...
 		// Now you must be thinking, did you look up the source code to iputils' ping? That would have been easier
-		ui.toggle_block(); //block input while we run ping
+		ui.toggle_block(true); //block input while we run ping
 		ui.display(`Running 'ping -c ${PING_COUNT} ${ip}'\n${ip} (${ip}) with 56(84) bytes of data.`);
 		if(this.find(ip) == -1 && !(ip == "127.0.0.1" || ip == "0.0.0.0")){
 			await sleep(PING_DELAY_MS * PING_COUNT);
 			ui.display(`\n--- ${ip} ping statistics --- \n${PING_COUNT} packets transmitted, 0 received, 100% packet loss, time ${PING_DELAY_MS*PING_COUNT}`);
-			ui.toggle_block(); //block input while we run ping
+			ui.toggle_block(false); //block input while we run ping
 			return;
 		}
 		var stats = [];
@@ -516,25 +521,25 @@ const npc = {
 		var mdev = -1.0;
 		var ran = -1.0;
 		var avg = 0.0;
-		for(var i = 0; i < PING_COUNT; i++){
+		for(let i = 0; i < PING_COUNT; i++){
 			ran = ranNum(11111, 99999);
 			if(ip == "127.0.0.1" || ip == "0.0.0.0") ran = ran / 1000; //make the latency wayy lower since its localhost
 			stats.push(ran);
 			await sleep(PING_DELAY_MS);
 			ui.display(`64 bytes from ${ip}: icmp_seq=${i} ttl=118 time=${(ran/1000).toFixed(3)} ms`);
 		}
-		for(var i = 0; i < stats.length; i++){
+		for(let i = 0; i < stats.length; i++){
 			if(min == -1){
 				min = stats[i];
 			} else if(min > stats[i]){
 				min = stats[i];
 			}
 			if(max < stats[i]){
-				max = stats[i]
+				max = stats[i];
 			}
 			avg += Number(stats[i]);
 		}
-		for(var i = 0; i < stats.length; i++){
+		for(let i = 0; i < stats.length; i++){
 			// population standard deviation
 			mdev += Math.pow(stats[i] - (avg/stats.length), 2);
 		}
@@ -545,9 +550,9 @@ const npc = {
 		max = (max/1000).toFixed(3);
 		ui.display(`\n--- ${ip} ping statistics --- \n${PING_COUNT} packets transmitted, ${PING_COUNT} received, 0% packet loss, time ${PING_DELAY_MS*PING_COUNT}ms`);
 		ui.display(`rtt min/avg/max/mdev = ${min}/${avg}/${max}/${mdev} ms`);
-		ui.toggle_block(); //block input while we run ping
+		ui.toggle_block(false); //block input while we run ping
 	}
-}
+};
 
 class NPC {
 	// used to create servers / NPCs
@@ -628,7 +633,7 @@ class NPC {
 		if(this.ffind("access.log") >= 0 || (player.connections.is_remote && player.connections.remote_host == this.ip)){
 			player.reset(true); // womp womp
 		} else {
-			console.log("Trace from '" + this.ip + "' ended.")
+			console.log("Trace from '" + this.ip + "' ended.");
 		}
 	}
 
@@ -704,7 +709,7 @@ function remote_cmd(command, cmd){
 			output = "<span class='error'> sh: '" + command + "': missing file to get</span>";
 		}
 		for(var i = 1; i < cmd.length; i++){
-			var file_location = server.ffind(cmd[i]);
+			let file_location = server.ffind(cmd[i]);
 			if(file_location == -1){ //if we cannot find it
 				output = "<span class='error'> sh: '" + command + "': cannot find file '" + cmd[i] + "'. Aborting</span>";
 				break;
@@ -718,8 +723,8 @@ function remote_cmd(command, cmd){
 		if(cmd.length == 1){
 			output = "<span class='error'> sh: '" + command + "': missing file to upload</span>";
 		}
-		for(var i = 1; i < cmd.length; i++){
-			var file_location = player.files.find(cmd[i]);
+		for(let i = 1; i < cmd.length; i++){
+			let file_location = player.files.find(cmd[i]);
 			if(file_location == -1){ //if we cannot find it
 				output = "<span class='error'> sh: '" + command + "': cannot find file '" + cmd[i] + "'. Aborting</span>";
 				break;
@@ -733,7 +738,7 @@ function remote_cmd(command, cmd){
 		if(cmd.length == 1){
 			output = "<span class='error'> sh: '" + command + "': missing file to remove</span>";
 		}
-		for(var i = 1; i < cmd.length; i++){
+		for(let i = 1; i < cmd.length; i++){
 			if(server.fdel(server.ffind(cmd[i])) == false){
 				output = "<span class='error'> sh: '" + command + "': file '" + cmd[i] + "'. Aborting.</span>";
 				break;
@@ -783,7 +788,7 @@ function executeCommand(command) {
 	} else if(cmd[0] == 'hydra') {
 		if(cmd.length == 2){
 			output = "Running 'hydra -l root -P *.csv " + cmd[1] + " ssh' in the background\n";
-			var server = npc.find(cmd[1]);
+			let server = npc.find(cmd[1]);
 			if(server == -1){
 				output += "<span class='error'>Server not found.</span>";
 			} else {
@@ -794,13 +799,13 @@ function executeCommand(command) {
 		}
 	} else if(cmd[0] == "ssh"){
 		if(cmd.length == 2){
-			var server = npc.find(cmd[1]);
+			let server = npc.find(cmd[1]);
 			if(player.connections.is_remote == true){
 				output = "<span class='error'> sh: '" + cmd[0] + "': does not support multiple active connections</span>";
 			} else if(server == -1){
 				output = "Server not found.";
 			} else {
-				npc.servers[server].connect(Services.ssh);
+				npc.servers[server].connect(game_data.services.ssh);
 			}
 		} else {
 			output = "<span class='error'>Invalid ssh syntax. Usage: ssh [IP]</span>";
@@ -809,22 +814,22 @@ function executeCommand(command) {
 		if(cmd.length == 1) return;
 		for(var i = 1; i < cmd.length; i++){
 			if(player.files.find(cmd[i]) != -1){
-				if(Txt_file_db.hasOwnProperty(cmd[i])){ //pull from DB
-					output += Txt_file_db[cmd[i]] + "\n";
+				if(game_data.txt_file_db.hasOwnProperty(cmd[i])){ //pull from DB
+					output += game_data.txt_file_db[cmd[i]] + "\n";
 				} else if(cmd[i].endsWith(".csv")){
 					output += `1234,6969,0420,${ranNum(1000, 9999)},${ranNum(1000, 9999)}, ...  `;
 				} else {
-					output += "File '" + cmd[i] + "' is not a textfile."
+					output += "File '" + cmd[i] + "' is not a textfile.";
 				}
 			} else {
-				output += "File '" + cmd[i] + "' is not found."
+				output += "File '" + cmd[i] + "' is not found.";
 			}
 		}
 	} else if(cmd[0] == "rm"){
 		if(cmd.length == 1){
 			output = "<span class='error'> sh: '" + command + "': missing file to remove</span>";
 		} else {
-			for(var i = 1; i < cmd.length; i++){
+			for(let i = 1; i < cmd.length; i++){
 				if(player.files.del(player.files.find(cmd[i])) == false){
 					output = "<span class='error'> sh: '" + command + "': file '" + cmd[i] + "'. Aborting.</span>";
 					break;
