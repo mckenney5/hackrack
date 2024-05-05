@@ -29,6 +29,7 @@ SOFTWARE.
 /*
  * --- TODO ---
  * Add a random chance that an NPC has a useful hacking tool (e.x. password list)
+ * Add a quest class, maybe randomly generate side quests for $$$
  * Change display to take a message type, e.x. display(output, ui.ids.error); make an ui.ids to make life easier
  * Add logic to complete quests
  * Add a way for a captive UI that waits for a command to finish, or allows specific interactions
@@ -69,28 +70,28 @@ SOFTWARE.
  *
  */ 
 
-// -- Default Settings -- \\
-
-const DEBUGGING = true; //turns on debugging features like running js, and toggle god mode
-const CRACK_TIME_MS = 120000;
-const DOWNLOAD_TIME_MS = 60000;
-const UPLOAD_TIME_MS = DOWNLOAD_TIME_MS * 1.5; //how much slower the upload speed is
-const PING_DELAY_MS = 1010;
-const PING_COUNT = 3;
-const STARTING_HDD_SIZE = 11;
-const STARTING_INTERNET_SPEED = 0.01;
-const STARTING_CPU_SPEED = 0.01;
-const STARTING_MONEY = 1000;
-const RANDOM_NPCS = 10; // number of procedurally generated NPCs, should not go over 255 - quests (for IP collisions)
-const DEFAULT_PLAYER_PROMPT = "$ ";
-
-
 const game = {
+	// -- Default Settings --
+	defaults : {
+		DEBUGGING : true, //turns on debugging features like running js, and toggle god mode
+		CRACK_TIME_MS : 120000, //longest time it takes to brute force into a server
+		DOWNLOAD_TIME_MS : 60000, //longest time it takes to download a file
+		UPLOAD_TIME_MS : this.DOWNLOAD_TIME_MS * 1.5, //longest time it takes to upload a file to a server, should be slower than download
+		PING_DELAY_MS : 1010, //how long to wait before sending another ping packet
+		PING_COUNT : 3, //how many ping packets we send
+		STARTING_HDD_SIZE : 11, //default hardrive size for players and npcs
+		STARTING_INTERNET_SPEED : 0.01, //1.0 is fastest for network tasks (like up/downloads)
+		STARTING_CPU_SPEED : 0.01, //1.0 is fastest for cpu tasks (like cracking)
+		STARTING_MONEY : 1000, //money to buy things from shops, it is the USD equivelent to what the player has in BTC
+		RANDOM_NPCS : 10, //how many NPCs that are randomly generated
+		DEFAULT_PLAYER_PROMPT : "$ ", //What is displayed infront of what the player types
+	},
+	
 	// -- Classes --
 	Files: class {
 		constructor(){
 			this.storage = [];
-			this.max_files = STARTING_HDD_SIZE;
+			this.max_files = game.defaults.STARTING_HDD_SIZE;
 		}
 		
 		find(name){
@@ -303,7 +304,7 @@ const game = {
 		}
 	
 		async crack(){
-			await game.sleep(CRACK_TIME_MS - (CRACK_TIME_MS * game.player.stats.cpu_speed)); //sleeps based off of 2min - the cpu speed (if cpu speed is 1, crack done instantly)
+			await game.sleep(game.defaults.CRACK_TIME_MS - (game.defaults.CRACK_TIME_MS * game.player.stats.cpu_speed)); //sleeps based off of 2min - the cpu speed (if cpu speed is 1, crack done instantly)
 			console.log("Crack complete.");
 			if(game.player.stats.password_list_lvl >= this.computer.password_strength){
 				game.player.mail.add("localhost", "Scan Results " + this.computer.ip, "w00t w00t got r00t. Password '" + this.computer.password + "'");
@@ -316,7 +317,7 @@ const game = {
 		async upload_to_player(file_index){
 			//uploads file to player after a set time due to internet speed
 			//file must exist and is checked by the calling function (remote_cmd)
-			await game.sleep(DOWNLOAD_TIME_MS - (DOWNLOAD_TIME_MS * game.player.stats.internet_speed)); //sleeps based off internet speed
+			await game.sleep(game.defaults.DOWNLOAD_TIME_MS - (game.defaults.DOWNLOAD_TIME_MS * game.player.stats.internet_speed)); //sleeps based off internet speed
 			var file = this.computer.files.storage[file_index];
 			if(file.id == game.data.item_ids.system_files && game.player.computer.files.find(file.name) != -1){
 				//if the player already has this file...skip so the HDD is not full of unremoveable files
@@ -331,7 +332,7 @@ const game = {
 		async download_from_player(file_index){
 			//uploads file to server after a set time due to internet speed
 			//file must exist and is checked by the calling function (remote_cmd)
-			await game.sleep(UPLOAD_TIME_MS - (UPLOAD_TIME_MS * game.player.stats.internet_speed)); //sleeps based off internet speed
+			await game.sleep(game.defaults.UPLOAD_TIME_MS - (game.defaults.UPLOAD_TIME_MS * game.player.stats.internet_speed)); //sleeps based off internet speed
 			var file = game.player.computer.files.storage[file_index];
 			this.computer.files.add({name: file.name,id: file.id, lvl: file.lvl});
 			game.player.mail.add(this.computer.ip, "SFTP Upload", "Upload of '" + file.name + "' complete.");
@@ -344,8 +345,8 @@ const game = {
 			const items = [{name: "ping", id: game.data.item_ids.system_files, lvl: 0.0}, {name: "hydra", id: game.data.item_ids.system_files, lvl: 0.0}, 
 				{name: "mail", id: game.data.item_ids.system_files, lvl: 0.0}, {name: "README.txt", id: game.data.item_ids.junk, lvl: 0.0}, 
 				{name: "common.passwords.0.1.csv", id: game.data.item_ids.password_list, lvl: 0.1}];
-			this.computer = new game.Computer("127.0.0.1", items, "1337_H@x3r_42069", 0.9, name + "'s PC", DEFAULT_PLAYER_PROMPT, "<span class='prompt'>", "</span>", true);
-			this.stats = new game.Stats(STARTING_MONEY, STARTING_CPU_SPEED, STARTING_INTERNET_SPEED);
+			this.computer = new game.Computer("127.0.0.1", items, "1337_H@x3r_42069", 0.9, name + "'s PC", game.defaults.DEFAULT_PLAYER_PROMPT, "<span class='prompt'>", "</span>", true);
+			this.stats = new game.Stats(game.defaults.STARTING_MONEY, game.defaults.STARTING_CPU_SPEED, game.defaults.STARTING_INTERNET_SPEED);
 			this.stats.update(this.computer.files.storage); //Updates stats with the new files
 			this.mail = new game.Mail();
 			
@@ -469,7 +470,7 @@ const game = {
 				} else { //TODO check if break statement will work instead of else
 					game.npcs.ping(cmd[1]);
 				}
-			} else if(cmd[0] == "js" && DEBUGGING) {
+			} else if(cmd[0] == "js" && game.defaults.DEBUGGING) {
 				eval(command.slice(3)); // scary
 			} else {
 				output = "<span class='error'> sh: '" + command + "': command not found</span>";
@@ -637,11 +638,11 @@ const game = {
 			// The ammount of realism I put in this in insane...
 			// Now you must be thinking, did you look up the source code to iputils' ping? That would have been easier
 			game.ui.toggle_block(true); //block input while we run ping
-			game.ui.display(`Running 'ping -c ${PING_COUNT} ${ip}'\n${ip} (${ip}) with 56(84) bytes of data.`);
+			game.ui.display(`Running 'ping -c ${game.defaults.PING_COUNT} ${ip}'\n${ip} (${ip}) with 56(84) bytes of data.`);
 			if(this.find_ip(ip) == -1){
 				//If we cannot find the ip
-				await game.sleep(PING_DELAY_MS * PING_COUNT);
-				game.ui.display(`\n--- ${ip} ping statistics --- \n${PING_COUNT} packets transmitted, 0 received, 100% packet loss, time ${PING_DELAY_MS*PING_COUNT}`);
+				await game.sleep(game.defaults.PING_DELAY_MS * game.defaults.PING_COUNT);
+				game.ui.display(`\n--- ${ip} ping statistics --- \n${game.defaults.PING_COUNT} packets transmitted, 0 received, 100% packet loss, time ${game.defaults.PING_DELAY_MS*game.defaults.PING_COUNT}`);
 				game.ui.toggle_block(false); //block input while we run ping
 				return;
 			}
@@ -651,11 +652,11 @@ const game = {
 			var mdev = -1.0;
 			var ran = -1.0;
 			var avg = 0.0;
-			for(let i = 0; i < PING_COUNT; i++){
+			for(let i = 0; i < game.defaults.PING_COUNT; i++){
 				ran = game.random.number(11111, 99999);
 				if(ip == "127.0.0.1" || ip == "0.0.0.0") ran = ran / 1000; //make the latency wayy lower since its localhost
 				stats.push(ran);
-				await game.sleep(PING_DELAY_MS);
+				await game.sleep(game.defaults.PING_DELAY_MS);
 				game.ui.display(`64 bytes from ${ip}: icmp_seq=${i} ttl=118 time=${(ran/1000).toFixed(3)} ms`);
 			}
 			for(let i = 0; i < stats.length; i++){
@@ -678,7 +679,7 @@ const game = {
 			avg = Number(((avg / stats.length)/1000).toFixed(3));
 			min = (min/1000).toFixed(3);
 			max = (max/1000).toFixed(3);
-			game.ui.display(`\n--- ${ip} ping statistics --- \n${PING_COUNT} packets transmitted, ${PING_COUNT} received, 0% packet loss, time ${PING_DELAY_MS*PING_COUNT}ms`);
+			game.ui.display(`\n--- ${ip} ping statistics --- \n${game.defaults.PING_COUNT} packets transmitted, ${game.defaults.PING_COUNT} received, 0% packet loss, time ${game.defaults.PING_DELAY_MS*game.defaults.PING_COUNT}ms`);
 			game.ui.display(`rtt min/avg/max/mdev = ${min}/${avg}/${max}/${mdev} ms`);
 			game.ui.toggle_block(false); //block input while we run ping
 		},
@@ -810,7 +811,10 @@ const game = {
 				console.log("Ignoring reset in god mode");
 				return;
 			}
-			location.reload(true);
+			console.log("You got traced. You lose.");
+			alert("--- Asset Forfeiture ---\nYour PC was destroyed and your HDD, modem, and BTC wallet were confinscated. Keep your nose clean. We have our eye on you.\n--\nState Police\nCyber Crimes");
+			location.reload(true); //HACK replace this with something cleaner
+			return;
 		}
 		
 		// Create the player
@@ -821,13 +825,16 @@ const game = {
 		this.ui.splash();
 		
 		// Generate NPCs
-		this.npcs.generate(RANDOM_NPCS);
+		this.npcs.generate(this.defaults.RANDOM_NPCS);
 		
 		// Generate Quests
 		//TODO
 		
 		// Start the first quest
 		this.run_quest(this.player.quest);
+		
+		// Show that we are initalized
+		this.initalized = true;
 		
 	},
 	run_quest(id){
@@ -847,7 +854,7 @@ const game = {
 	},
 	tgm(power=0.95){
 		//used for new games only
-		if(!DEBUGGING){
+		if(!this.defaults.DEBUGGING){
 			console.log("Debugging disabled, god mode blocked");
 			return;
 		}
@@ -860,8 +867,8 @@ const game = {
 			console.log("God mode enabled");
 		} else {
 			this.player.god = false;
-			this.player.stats.cpu_speed = STARTING_CPU_SPEED;
-			this.player.stats.internet_speed = STARTING_INTERNET_SPEED;
+			this.player.stats.cpu_speed = game.defaults.STARTING_CPU_SPEED;
+			this.player.stats.internet_speed = game.defaults.STARTING_INTERNET_SPEED;
 			this.player.stats.password_list_lvl = 0.1;
 			this.ui.display("<span class='meta'> God Mode Disabled. </span>");
 			console.log("God mode disabled");
