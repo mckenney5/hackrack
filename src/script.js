@@ -24,15 +24,16 @@ SOFTWARE.
 
 // Lint settings (version, and ignoring the one eval() call)
 /* jshint esversion: 8 */
-/* jshint -W061 */
+/* jshint -W061 */ /* <-- ignores the eval() call in debugging mode */
 
 /*
  * --- TODO ---
+ * Add more data to game.data like random letters, random file extensions, and so on
+ * Change display to take a message type, e.x. display(output, ui.ids.error); make an ui.ids to make life easier
  * Add logic to complete quests
  * Add a way for a captive UI that waits for a command to finish, or allows specific interactions
  *    (look at keydown events and switch handlers)
  * Sanatize user input (remove html tags)
- * fix bug with command history and prompt
  * Add save game feature via local storage and JSON interpreter for the player object
  * Add proxies that slow down tracing by an order of magnitude
  * Add way to interact with a hardware, software, and leaks shop
@@ -40,7 +41,6 @@ SOFTWARE.
  * (maybe) Add 127.0.0.1 to server list so you can 'hack' yourself?
  * Add total processes to player to increase process time (stops concurrent downloads)
  * Move players prompt to the UI, make display(prompt=ui.prompt, data)
- * Maybe add a computer Class that holds the files and things like the player has
  * - Add commands-
  * 	- lynx <url> (connects to a web page, can be used for shops)
  * 	- telnet <ip> (connects to telnet server for things like shops)
@@ -62,11 +62,10 @@ SOFTWARE.
  *
  * --- Wish List ---
  * 	- Add windows servers with cmd.exe and cmd commands
- * - vuln scanner
+ * 	- vuln scanner
  *
  * --- Notes ---
  * For viruses to work, there will need to be a saved list of those servers and those IPs should
- * be black listed from being randomly generated (check that list before creating that IP)
  *
  */ 
 
@@ -483,6 +482,7 @@ const game = {
 	ui : {
 		// handles all UI
 		terminal: document.getElementById('terminal'),
+		terminal_container: document.getElementById('terminal-container'),
 		input: document.getElementById('input'),
 		block: false, //toggles blocking while waiting for input, take that _no blocking on the main thread_
 	
@@ -493,12 +493,12 @@ const game = {
 				output = output.split("\n");
 				var text = "<p class='output'>";
 			for(var i = 0; i < output.length; i++){
-				text += `${output[i]} <br>`;
+				text += `${output[i]}<br>`;
 			}
 			text += "</p>";
 			this.terminal.innerHTML += text;
-			this.terminal.scrollTop = terminal.scrollHeight;
 			if(!this.block) input.value = game.player.computer.prompt.display();
+			this.terminal_container.scrollTop = this.terminal_container.scrollHeight; //scroll to bottom on output
 		},
 	
 		handleInput(e) {
@@ -557,8 +557,8 @@ const game = {
 		},
 	
 		init(){
-			input.addEventListener('keydown', this.handleInput);
-			input.value = game.player.computer.prompt.text;
+			this.input.addEventListener('keydown', this.handleInput);
+			this.input.value = game.player.computer.prompt.text;
 		},
 		
 		clear_terminal(){
@@ -848,6 +848,7 @@ const game = {
 			console.log("God mode disabled");
 		}
 	},
+
 	// -- Properties --
 	initalized: false,
 	

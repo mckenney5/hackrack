@@ -6,6 +6,7 @@ body, html{
   align-items: center;
   background-color: #E3E1C9; /*#505050;*/
 }
+
 .terminal-container {
   width: 1200px;
   height: 800px;
