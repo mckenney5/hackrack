@@ -28,11 +28,11 @@ SOFTWARE.
 
 /*
  * --- TODO ---
- * Add more data to game.data like random letters, random file extensions, and so on
+ * Add a random chance that an NPC has a useful hacking tool (e.x. password list)
  * Change display to take a message type, e.x. display(output, ui.ids.error); make an ui.ids to make life easier
  * Add logic to complete quests
  * Add a way for a captive UI that waits for a command to finish, or allows specific interactions
- *    (look at keydown events and switch handlers)
+ *    (look at keydown events and switch the handlers)
  * Sanatize user input (remove html tags)
  * Add save game feature via local storage and JSON interpreter for the player object
  * Add proxies that slow down tracing by an order of magnitude
@@ -444,7 +444,7 @@ const game = {
 						if(game.data.txt_file_db.hasOwnProperty(cmd[i])){ //pull from DB
 							output += game.data.txt_file_db[cmd[i]] + "\n";
 						} else if(cmd[i].endsWith(".csv")){
-							output += `1234,6969,0420,${game.random(1000, 9999)},${game.random(1000, 9999)}, ...  `;
+							output += `1234,6969,0420,${game.random.number(1000, 9999)},${game.random.number(1000, 9999)},${game.random.letters(4)}, ...  `;
 						} else {
 							output += "File '" + cmd[i] + "' is not a textfile.";
 						}
@@ -570,33 +570,34 @@ const game = {
 		// -- Hashmaps -- \\
 		
 		quests: {
-			0: "I am glad you finally decided to use your skills!\nFirst things first, lets get you a professional firewall.\n Hack into our high schools IP at <span class='cmd'>[insert dynamic ip here]</span> and download the cuda.0.1.fw program. Do NOT forget to delete logs!\nTo connect to the server, first run <span class='cmd'>hydra [ip]</span> to crack the ssh password, then get the password from your email.\nOnce you have the password, run the command <span class='cmd'>ssh [ip]</span>, type in the password, do the command <span class='cmd'>get cuda.0.1.fw</span>, THEN run <span class='cmd'>rm access.log</span>, then <span class='cmd'>exit</span>\nIt is not currently school hours so they will not run an IP trace on you. EZPZ"
+			0: "I am glad you finally decided to use your skills!\nFirst things first, lets get you a professional firewall. Hack into our high school's router and download the cuda.0.1.fw program. Do NOT forget to delete logs! To connect to the server, first run <span class='cmd'>hydra [ip]</span> to crack the ssh password, then get the password from your email. Once you have the password, run the command <span class='cmd'>ssh [ip]</span>, type in the password, do the command <span class='cmd'>get cuda.0.1.fw</span>, THEN run <span class='cmd'>rm access.log</span>, then <span class='cmd'>exit</span>\nIt is not currently school hours so they will not run an IP trace on you. EZPZ"
 		},
 		
 		quest_ids: {
 			'Welcome'		: 0,
 			'Crawl'			: 1,
 			'Walk'			: 2,
-			'Run'			: 3,
+			'Run'				: 3,
 			'Sprint'		: 4
 		},
 		
 		item_ids: {
 			'system_files'	:-1,
-			'junk'			: 0,
-			'quest_item'	: 1,
-			'log'			: 2,
-			'data'			: 3,
+			'junk'					: 0,
+			'quest_item'		: 1,
+			'log'						: 2,
+			'data'					: 3,
 			'passsword_list': 4,
-			'firewall'		: 5,
-			'encrypter' 	: 6,
-			'decrypter' 	: 7,
-			'cracker'		: 8,
-			'script'		: 9,
-			'malware'		: 10
+			'firewall'			: 5,
+			'encrypter' 		: 6,
+			'decrypter' 		: 7,
+			'cracker'				: 8,
+			'script'				: 9,
+			'malware'				: 10
 		},
 		
 		txt_file_db: {
+			//Readable text files go here, aka you can use 'cat' on them
 			"README.txt" :  "Welcome to the virutal hacking sim. The game is based off of real world cyber security tools available on linux. " +
 							"Commands like 'ls', 'clear', 'ssh' and so on are available in your starting computer. Type 'ls' to see the tools available to you. " +
 							"To read your mail, use the command 'mail' to see what is available, and 'mail n' where n is the index number of the email (e.x. mail 0). " +
@@ -611,7 +612,7 @@ const game = {
 			'ssh' : 22,
 			'telnet' : 23,
 			'web' : 80
-		}
+		},
 	},
 	npcs : {
 		servers: [],
@@ -627,9 +628,9 @@ const game = {
 		},
 		generate_ip(){
 			// Returns a valid, unused, ipv4 address. Can technically hang when all IP ranges are full
-			var ip = `${game.random(0,255)}.${game.random(0,255)}.${game.random(0,255)}.${game.random(0,255)}`;
+			var ip = `${game.random.number(0,255)}.${game.random.number(0,255)}.${game.random.number(0,255)}.${game.random.number(0,255)}`;
 			while(this.find_ip(ip) != -1)
-				ip = `${game.random(0,255)}.${game.random(0,255)}.${game.random(0,255)}.${game.random(0,255)}`;
+				ip = `${game.random.number(0,255)}.${game.random.number(0,255)}.${game.random.number(0,255)}.${game.random.number(0,255)}`;
 			return ip;
 		},
 		async ping(ip){
@@ -651,7 +652,7 @@ const game = {
 			var ran = -1.0;
 			var avg = 0.0;
 			for(let i = 0; i < PING_COUNT; i++){
-				ran = game.random(11111, 99999);
+				ran = game.random.number(11111, 99999);
 				if(ip == "127.0.0.1" || ip == "0.0.0.0") ran = ran / 1000; //make the latency wayy lower since its localhost
 				stats.push(ran);
 				await game.sleep(PING_DELAY_MS);
@@ -687,15 +688,17 @@ const game = {
 				let ip = this.generate_ip();
 				
 				items = [];
-				for(let i = 0; i < 5; i++){
-					//Generate junk files
-					items.push({name: `${game.random(100,2555)}.trash`, id: game.data.item_ids.junk, lvl: 0.0});
+				let ammount = game.random.number(1, 4);
+				for(let i = 0; i < ammount; i++){
+					//Generates a random ammount of junk files
+					items.push({name: `${game.random.number(100,2555)}${game.random.file_ext()}`, id: game.data.item_ids.junk, lvl: 0.0});
+					items.push({name: `${game.random.letters(5)}${game.random.file_ext()}`, id: game.data.item_ids.junk, lvl: 0.0});
 				}
-				let password_strength = Math.random();
+				let password_strength = game.random.decimal();
 				let motd = "| SERVER " + ip + " |";
-				let trace_time = game.random(60000, 240000);
+				let trace_time = game.random.number(60000, 240000);
 				let is_cracked = false;
-				let password = game.random(10000000, 99999999);
+				let password = `${game.random.number(10000000, 99999999)}${game.random.letters(5)}`;
 		
 				let new_npc = new game.NPC(ip, items, password_strength, motd, trace_time, is_cracked, password, "# ");
 				this.servers.push(new_npc);
@@ -760,14 +763,32 @@ const game = {
 			game.ui.display(output);
 		}
 	},
+	random : {
+		letter_list: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'],
+		file_ext_list: ['.bat', '.exe', '.out', '.pdf', '.doc', '.zip', '.rar', '.png', '.jpg', '.gif', '.xml', '.html', '.css', '.js', '.ppt', '.xls', '.ini', '.cfg', '.7z', '.sql', '.md', '.php', '.java', '.cpp', '.hpp', '.dll', '.lib', '.obj', '.pdb', '.mp3', '.wav', '.mp4', '.avi', '.mov', '.mkv', '.wma', '.ogg', '.flv', '.swf', '.iso', '.img', '.vhd', '.vmx', '.ova', '.ovf'],
+
+		number(min, max) {
+		// Generate a random integer between min (inclusive) and max (exclusive)
+	    min = Math.ceil(min);
+	    max = Math.floor(max);
+	    return Math.floor(Math.random() * (max - min)) + min;
+		},
+		letters(n){
+			let output = '';
+			for(let i = 0; i < n; i++){
+				output += this.letter_list[this.number(0, this.letter_list.length-1)];
+			}
+			return output;
+		},
+		file_ext(){
+			return this.file_ext_list[this.number(0, this.file_ext_list.length-1)];
+		},
+		decimal(){
+			return Math.random();
+		}
+	},
 
 	// -- Methods --
-	random(min, max) {
-	// Generate a random integer between min (inclusive) and max (exclusive)
-    min = Math.ceil(min);
-    max = Math.floor(max);
-    return Math.floor(Math.random() * (max - min)) + min;
-	},
 	sleep(ms){
 		// sets a timer
 		console.log("timer set for " + ms/1000 + " seconds");
@@ -807,8 +828,6 @@ const game = {
 		
 		// Start the first quest
 		this.run_quest(this.player.quest);
-		
-		
 		
 	},
 	run_quest(id){
