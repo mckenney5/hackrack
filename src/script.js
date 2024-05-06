@@ -302,6 +302,7 @@ class NPC extends Computer {
 	async upload_to_player(file_index){
 		//uploads file to player after a set time due to internet speed
 		//file must exist and is checked by the calling function (remote_cmd)
+		game.ui.display("Download started.");
 		await game.sleep(game.defaults.DOWNLOAD_TIME_MS - (game.defaults.DOWNLOAD_TIME_MS * game.player.stats.internet_speed)); //sleeps based off internet speed
 		var file = this.files.storage[file_index];
 		if(file.id == game.data.item_ids.system_files && game.player.files.find(file.name) != -1){
@@ -317,6 +318,7 @@ class NPC extends Computer {
 	async download_from_player(file_index){
 		//uploads file to server after a set time due to internet speed
 		//file must exist and is checked by the calling function (remote_cmd)
+		game.ui.display("Upload started.");
 		await game.sleep(game.defaults.UPLOAD_TIME_MS - (game.defaults.UPLOAD_TIME_MS * game.player.stats.internet_speed)); //sleeps based off internet speed
 		var file = game.player.files.storage[file_index];
 		this.files.add({name: file.name,id: file.id, lvl: file.lvl});
@@ -421,6 +423,7 @@ class Player extends Computer {
 					this.remote.connect(cmd[1], game.data.services.ssh);
 					game.ui.display(this.motd);
 					game.ui.display(`Username: ${this.name}\nPassword: ${this.password}\n\nWelcome ${this.name}.`);
+					this.prompt.text = "[localhost] # ";
 				} else if(server == -1){
 					output = "Server not found.";
 				} else {
@@ -462,7 +465,10 @@ class Player extends Computer {
 				game.npcs.ping(cmd[1]);
 			}
 		} else if(cmd[0] == "exit") {
-			if(this.remote.connected) this.remote.disconnect();
+			if(this.remote.connected){
+				game.ui.display("\nDisconnected.");
+				this.remote.disconnect();
+			}
 		} else if(cmd[0] == "ip") {
 			output = "Running 'hostname -I'\n" + this.ip;
 		} else if(cmd[0] == "js" && game.defaults.DEBUGGING) {
