@@ -29,6 +29,7 @@ SOFTWARE.
 /*
  * --- TODO ---
  * Add a random chance that an NPC has a useful hacking tool (e.x. password list)
+ * Move the .computer object into the main object
  * Add a quest class, maybe randomly generate side quests for $$$
  * Change display to take a message type, e.x. display(output, ui.ids.error); make an ui.ids to make life easier
  * Add logic to complete quests
@@ -70,7 +71,402 @@ SOFTWARE.
  *
  */ 
 
-const game = {
+// -- Classes --
+class Files {
+	constructor(){
+		this.storage = [];
+		this.max_files = game.defaults.STARTING_HDD_SIZE;
+	}
+	
+	find(name){
+		for(let i = 0; i < this.storage.length; i++){
+				if(this.storage[i].name == name) return i;
+			}
+			return -1; //if we did not find it
+	}
+	
+	add(item){
+		if(this.storage.length + 1 > this.max_files) {
+			console.log("Storage full, cannot add ", item);
+			return false;
+		}
+		var name = item.name;
+		var end = '';
+		for(let i = 1; this.find(name + end) != -1; end = '.' + i++){
+			// Appends a number to the end of a file so you do not have more than one with the same name
+		}
+		if(end != '') item.name = name + end;
+		this.storage.push(item);
+		this.sort(); //TODO consider removing this call and making the constructors call if after for more speed
+		return true;
+	}
+	
+	del(name){
+		var index = this.find(name);
+		if(index != -1 && this.storage[index].id != game.data.item_ids.system_files){
+			//if the item is found
+			this.storage.splice(index, 1);
+			console.log(`File at index ${index} removed successfully.`);
+			this.sort();
+			return true;
+		}
+		console.log(`Unable to delete '${name}'`);
+		return false;
+	}
+	
+	sort(){
+		this.storage.sort((a, b) => a.name.localeCompare(b.name));
+	}
+	
+	list(){ //TODO consider adding custom spans to this func
+		var data = [];
+		for(let i = 0; i < this.storage.length; i++){
+			data.push(this.storage[i].name);
+		}
+		return data;
+	}
+}
+class Prompt {
+	constructor(style_start, text, style_end, show){
+		this.style_start = style_start;
+		this.text = text;
+		this.style_end = style_end;
+		this.show = show;
+		this.default_style_start = style_start;
+		this.default_style_end = style_end;
+		this.default_text = text;
+	}
+	display(){
+		if(!this.show) return '';
+		
+		return this.style_start + this.text + this.style_end;
+	}
+	change(text, start='', end=''){
+		this.text = text;
+		if(start)
+			this.style_start = start;
+		if(end)
+			this.style_end = end;
+	}
+	reset(){
+		this.style_start = this.default_style_start;
+		this.text = this.default_text;
+		this.style_end = this.default_style_end;
+	}
+}
+class Stats {
+	//Handles progression and hardware
+	constructor(money, cpu_speed, internet_speed){
+		this.money = money;
+		this.cpu_speed = cpu_speed;
+		this.internet_speed = internet_speed;
+		this.password_list_lvl = 0.0; // Defaults to none, use update() to change it after init
+		this.firewall_lvl = 0.0; //     ^^^
+	}
+	
+	update(items){
+		for(var i = 0; i < items.length; i++){
+			if(items[i].id == game.data.item_ids.password_list){
+				if(items[i].lvl > this.password_list_lvl)
+					this.password_list_lvl = items[i].lvl;
+			} else if(items[i].id == game.data.item_ids.firewall){
+				if(items[i].lvl > this.firewall_lvl)
+					this.firewall_lvl = items[i].lvl;
+			}
+		}
+	}
+}
+class Mail {
+	constructor(){
+		this.db = [];
+	}
+	add(user, subject, body) {
+		this.db.push({ user, subject, body });
+		game.ui.display("You got mail.");
+	}
+
+	del(index) {
+		if(index == '*'){
+			// I rewrote this 6 times, I am finally happy with it
+			for(var i = 0; this.db.length > 0; i++){
+				this.db.pop();
+			}
+			return `Deleted ${i} emails.`;
+		} else if (index >= 0 && index < this.db.length) {
+			this.db.splice(index, 1);
+			return `Email at index ${index} removed successfully.`;
+		} else {
+			return `Invalid index ${index}.`;
+		}
+	}
+
+	list(){
+		if(this.db.length == 0) return "Your inbox is empty";
+
+		var output = "";
+		for(var i = 0; i < this.db.length; i++){
+			output += "[" + i + "] " + this.db[i].subject + "\n";
+		}
+		return output;
+	}
+
+	find(key){
+		for(var i = 0; i < this.db.length; i++){
+			if(this.db[i].subject == key) return i;
+		}
+		return -1; //if we did not find it
+	}
+
+	get_mail(i){
+		var output = "";
+		if(Number(i) >= this.db.length || Number(i) < 0)
+			output = "<span class=\"error\">Cannot find email at index '" + i + "'</span>"; //TODO error / msg object
+		else
+			output = "<span class=\"mail\">FROM: " + this.db[i].user + "\nSUBJECT: " + this.db[i].subject + "\nBODY: \n" + this.db[i].body + "</span>";
+		return output;
+	}
+}
+class Computer {
+	constructor(ip, items, password, password_strength, motd, prompt_text, prompt_start, prompt_end, prompt_show){
+		this.ip = ip;
+		
+		// Add files
+		this.files = new Files();
+		// Add Default files
+		this.files.add({name: "sh", id: game.data.item_ids.system_files, lvl: 0.0});
+		this.files.add({name: "telnet", id: game.data.item_ids.system_files, lvl: 0.0});
+		this.files.add({name: "ssh", id: game.data.item_ids.system_files, lvl: 0.0});
+		this.files.add({name: "cat", id: game.data.item_ids.system_files, lvl: 0.0});
+		for(let i = 0; i < items.length; i++){
+			this.files.add(items[i]);
+		}
+		
+		this.password = password;
+		this.password_strength = password_strength;
+		this.motd = motd;
+		//this.prompt = new game.Prompt(prompt_start, prompt_text, prompt_end, prompt_show); //FIXME prompt start and end screws up all of the ui
+		this.prompt = new Prompt("", prompt_text, "", prompt_show);
+	}
+}
+class NPC extends Computer {
+	// used to create servers / NPCs
+	constructor(ip, items, password_strength, motd, trace_time, is_cracked, password, prompt_text) {
+		super(ip, items, password, password_strength, motd, prompt_text);
+		this.trace_time = trace_time;
+		this.is_cracked = is_cracked;
+		this.files.add({name: "access.log", id: game.data.item_ids.log, lvl: 0.0});
+		this.access_log = "";
+	}
+
+	async trace(){
+		if(this.trace_time == -1) return; //if trace is off, skip
+		await game.sleep(this.trace_time);
+		if(this.files.find("access.log") >= 0 || (game.player.remote.connected && game.player.remote.host == this.ip)){
+			game.new_game(); // womp womp
+		} else {
+			console.log("Trace from '" + this.ip + "' ended.");
+		}
+	}
+
+	disconnect(){
+		game.ui.display("\nDisconnected.");
+		game.player.remote.disconnect();
+	}
+
+	connect(service){
+		game.player.remote.connect(this.ip, service);
+		game.ui.display(this.motd);
+		if(this.is_cracked){
+			game.ui.display("Username: root\nPassword: " + this.password + "\n\nWelcome root.");
+			game.player.prompt.text = "[" + this.ip + "] # "; //TODO change this
+			console.log("Trace started by '" + this.ip + "'");
+			this.trace();
+		} else {
+			game.ui.display("Username: root\nPassword: 1234");
+			game.ui.display("<span class='error'> Invalid username or password </span>");
+			this.disconnect();
+		}
+	}
+
+	async crack(){
+		await game.sleep(game.defaults.CRACK_TIME_MS - (game.defaults.CRACK_TIME_MS * game.player.stats.cpu_speed)); //sleeps based off of 2min - the cpu speed (if cpu speed is 1, crack done instantly)
+		console.log("Crack complete.");
+		if(game.player.stats.password_list_lvl >= this.password_strength){
+			game.player.mail.add("localhost", "Scan Results " + this.ip, "w00t w00t got r00t. Password '" + this.password + "'");
+			this.is_cracked = true;
+		} else {
+			game.player.mail.add("localhost", "Scan Results " + this.ip, "Passsword list exhausted. Unable to guess password. Maybe you need a better list?");
+		}
+	}
+
+	async upload_to_player(file_index){
+		//uploads file to player after a set time due to internet speed
+		//file must exist and is checked by the calling function (remote_cmd)
+		await game.sleep(game.defaults.DOWNLOAD_TIME_MS - (game.defaults.DOWNLOAD_TIME_MS * game.player.stats.internet_speed)); //sleeps based off internet speed
+		var file = this.files.storage[file_index];
+		if(file.id == game.data.item_ids.system_files && game.player.files.find(file.name) != -1){
+			//if the player already has this file...skip so the HDD is not full of unremoveable files
+			console.log("System file already on players HDD, skipping");
+		} else {
+			game.player.files.add({name: file.name, id: file.id, lvl: file.lvl});
+		}
+		game.player.mail.add(this.ip, "SFTP Download", "Download of '" + file.name + "' complete.");
+		console.log("Download Complete: " + this.ip + " | " + file.name);
+	}
+
+	async download_from_player(file_index){
+		//uploads file to server after a set time due to internet speed
+		//file must exist and is checked by the calling function (remote_cmd)
+		await game.sleep(game.defaults.UPLOAD_TIME_MS - (game.defaults.UPLOAD_TIME_MS * game.player.stats.internet_speed)); //sleeps based off internet speed
+		var file = game.player.files.storage[file_index];
+		this.files.add({name: file.name,id: file.id, lvl: file.lvl});
+		game.player.mail.add(this.ip, "SFTP Upload", "Upload of '" + file.name + "' complete.");
+		console.log("Upload Complete: " + this.ip + " | " + file.name);
+	}
+}
+class Player extends Computer {
+	constructor(name){
+		const items = [{name: "ping", id: game.data.item_ids.system_files, lvl: 0.0}, {name: "hydra", id: game.data.item_ids.system_files, lvl: 0.0}, 
+			{name: "mail", id: game.data.item_ids.system_files, lvl: 0.0}, {name: "README.txt", id: game.data.item_ids.junk, lvl: 0.0}, 
+			{name: "common.passwords.0.1.csv", id: game.data.item_ids.password_list, lvl: 0.1}];
+		super("127.0.0.1", items, "1337_H@x3r_42069", 0.9, name + "'s PC", game.defaults.DEFAULT_PLAYER_PROMPT, "<span class='prompt'>", "</span>", true);
+		this.name = name;
+		this.stats = new Stats(game.defaults.STARTING_MONEY, game.defaults.STARTING_CPU_SPEED, game.defaults.STARTING_INTERNET_SPEED);
+		this.stats.update(this.files.storage); //Updates stats with the new files
+		this.mail = new Mail();
+		
+		this.command_history = [];
+		this.history_index = 0;
+		this.quest = 0; //what quest we are on
+		
+		this.remote = {
+		// Remote connections
+			connected: false,
+			host: "", //TODO add support for multiple connections and services
+			service: "",
+			connect(host, service){
+				if(this.connected) return false; // disables connecting to multiple computers at once
+				this.host = host;
+				this.service = service;
+				this.connected = true;
+				return true;
+			},
+	
+			disconnect(host) {
+				//currently disconnects from everything
+				this.host = "";
+				this.service = "";
+				this.connected = false;
+				game.player.prompt.reset();
+				return true; //TODO check if we are already connected, if so disconnect, else return false
+			}
+		};
+		
+		this.god = false; // used for debugging
+	}
+	
+	executeCommand(command) {
+		// Handles commands
+	
+		command = command.slice(this.prompt.text.length);
+	
+		if(command == "") return; //ignore empty lines
+	
+		if(this.prompt.show) game.ui.display(`${game.player.prompt.style_start}${game.player.prompt.text}${game.player.prompt.style_end} ${command}`);
+		let cmd = command.split(' ');
+	
+		// if we are remote, change the state of the remote machine, unless the command is l for local (e.x. "l ls" shows local files, like sftp)
+		if(this.remote.connected && cmd[0] != 'l')
+			return game.npcs.remote_cmd(command, cmd);
+		else if(cmd[0] == 'l')
+			cmd.shift(); //pop off first element
+	
+		var output = '';
+	
+		// check and run commands
+		if(cmd[0] == "clear"){
+			game.ui.clear_terminal();
+		} else if(cmd[0] == "ls"){
+			output = this.files.list().join(" ");
+		} else if(cmd[0] == "mail"){
+			if(cmd.length == 1){
+				output = this.mail.list();
+			} else if(Number(cmd[1]) >= 0){
+				output = this.mail.get_mail(cmd[1]);
+			} else if(cmd[1] == "rm" && cmd.length == 3 && (Number(cmd[2]) >= 0 || cmd[2] == '*')) {
+				output = this.mail.del(cmd[2]);
+			} else {
+				output = "<span class='error'> sh: mail: '" + command + "': command not found</span>";
+			}
+		} else if(cmd[0] == 'hydra') {
+			if(cmd.length == 2){
+				output = "Running 'hydra -l root -P *.csv " + cmd[1] + " ssh' in the background\n";
+				let server = game.npcs.find_ip(cmd[1]); //TODO check for localhost
+				if(server == -1){
+					output += "<span class='error'>Server not found.</span>";
+				} else {
+					game.npcs.servers[server].crack();
+				}
+			} else {
+				output = "Invalid hydra syntax";
+			}
+		} else if(cmd[0] == "ssh"){
+			if(cmd.length == 2){
+				let server = game.npcs.find_ip(cmd[1]);
+				if(this.remote.connected){
+					output = "<span class='error'> sh: '" + cmd[0] + "': does not support multiple active connections</span>";
+				} else if(server == -1){
+					output = "Server not found.";
+				} else {
+					game.npcs.servers[server].connect(game.data.services.ssh);
+				}
+			} else {
+				output = "<span class='error'>Invalid ssh syntax. Usage: ssh [IP]</span>";
+			}
+		} else if(cmd[0] == 'cat'){
+			if(cmd.length == 1) return;
+			for(var i = 1; i < cmd.length; i++){
+				if(this.files.find(cmd[i]) != -1){
+					if(game.data.txt_file_db.hasOwnProperty(cmd[i])){ //pull from DB
+						output += game.data.txt_file_db[cmd[i]] + "\n";
+					} else if(cmd[i].endsWith(".csv")){
+						output += `1234,6969,0420,${game.random.number(1000, 9999)},${game.random.number(1000, 9999)},${game.random.letters(4)}, ...  `;
+					} else {
+						output += "File '" + cmd[i] + "' is not a valid textfile.";
+					}
+				} else {
+					output += "File '" + cmd[i] + "' is not found.";
+				}
+			}
+		} else if(cmd[0] == "rm"){
+			if(cmd.length == 1){
+				output = "<span class='error'> sh: '" + command + "': missing file to remove</span>";
+			} else {
+				for(let i = 1; i < cmd.length; i++){
+					if(this.files.del(cmd[i]) == false){
+						output = "<span class='error'> sh: '" + command + "': file '" + cmd[i] + "'. Aborting.</span>";
+						break;
+					}
+				}
+			}
+		} else if(cmd[0] == "ping") {
+			if(cmd.length != 2){
+				output = "<span class='error'> sh: '" + command + "': Usage ping [IP]</span>";
+			} else { //TODO check if break statement will work instead of else
+				game.npcs.ping(cmd[1]);
+			}
+		} else if(cmd[0] == "js" && game.defaults.DEBUGGING) {
+			eval(command.slice(3)); // scary
+		} else {
+			output = "<span class='error'> sh: '" + command + "': command not found</span>";
+		}
+		game.ui.display(output);
+	}
+}
+
+
+var game = {
+// Holds the state of the game
 	// -- Default Settings --
 	defaults : {
 		DEBUGGING : true, //turns on debugging features like running js, and toggle god mode
@@ -87,399 +483,6 @@ const game = {
 		DEFAULT_PLAYER_PROMPT : "$ ", //What is displayed infront of what the player types
 	},
 	
-	// -- Classes --
-	Files: class {
-		constructor(){
-			this.storage = [];
-			this.max_files = game.defaults.STARTING_HDD_SIZE;
-		}
-		
-		find(name){
-			for(let i = 0; i < this.storage.length; i++){
-					if(this.storage[i].name == name) return i;
-				}
-				return -1; //if we did not find it
-		}
-		
-		add(item){
-			if(this.storage.length + 1 > this.max_files) {
-				console.log("Storage full, cannot add ", item);
-				return false;
-			}
-			var name = item.name;
-			var end = '';
-			for(let i = 1; this.find(name + end) != -1; end = '.' + i++){
-				// Appends a number to the end of a file so you do not have more than one with the same name
-			}
-			if(end != '') item.name = name + end;
-			this.storage.push(item);
-			this.sort(); //TODO consider removing this call and making the constructors call if after for more speed
-			return true;
-		}
-		
-		del(name){
-			var index = this.find(name);
-			if(index != -1 && this.storage[index].id != game.data.item_ids.system_files){
-				//if the item is found
-				this.storage.splice(index, 1);
-				console.log(`File at index ${index} removed successfully.`);
-				this.sort();
-				return true;
-			}
-			console.log(`Unable to delete '${name}'`);
-			return false;
-		}
-		
-		sort(){
-			this.storage.sort((a, b) => a.name.localeCompare(b.name));
-		}
-		
-		list(){ //TODO consider adding custom spans to this func
-			var data = [];
-			for(let i = 0; i < this.storage.length; i++){
-				data.push(this.storage[i].name);
-			}
-			return data;
-		}
-	},
-	Prompt: class {
-		constructor(style_start, text, style_end, show){
-			this.style_start = style_start;
-			this.text = text;
-			this.style_end = style_end;
-			this.show = show;
-			this.default_style_start = style_start;
-			this.default_style_end = style_end;
-			this.default_text = text;
-		}
-		display(){
-			if(!this.show) return '';
-			
-			return this.style_start + this.text + this.style_end;
-		}
-		change(text, start='', end=''){
-			this.text = text;
-			if(start)
-				this.style_start = start;
-			if(end)
-				this.style_end = end;
-		}
-		reset(){
-			this.style_start = this.default_style_start;
-			this.text = this.default_text;
-			this.style_end = this.default_style_end;
-		}
-	},
-	Computer: class {
-		constructor(ip, items, password, password_strength, motd, prompt_text, prompt_start, prompt_end, prompt_show){
-			this.ip = ip;
-			
-			// Add files
-			this.files = new game.Files();
-			// Add Default files
-			this.files.add({name: "sh", id: game.data.item_ids.system_files, lvl: 0.0});
-			this.files.add({name: "telnet", id: game.data.item_ids.system_files, lvl: 0.0});
-			this.files.add({name: "ssh", id: game.data.item_ids.system_files, lvl: 0.0});
-			this.files.add({name: "cat", id: game.data.item_ids.system_files, lvl: 0.0});
-			for(let i = 0; i < items.length; i++){
-				this.files.add(items[i]);
-			}
-			
-			this.password = password;
-			this.password_strength = password_strength;
-			this.motd = motd;
-			//this.prompt = new game.Prompt(prompt_start, prompt_text, prompt_end, prompt_show); //FIXME prompt start and end screws up all of the ui
-			this.prompt = new game.Prompt("", prompt_text, "", prompt_show);
-		}
-	},
-	Stats: class {
-		//Handles progression and hardware
-		constructor(money, cpu_speed, internet_speed){
-			this.money = money;
-			this.cpu_speed = cpu_speed;
-			this.internet_speed = internet_speed;
-			this.password_list_lvl = 0.0; // Defaults to none, use update() to change it after init
-			this.firewall_lvl = 0.0; //     ^^^
-		}
-		
-		update(items){
-			for(var i = 0; i < items.length; i++){
-				if(items[i].id == game.data.item_ids.password_list){
-					if(items[i].lvl > this.password_list_lvl)
-						this.password_list_lvl = items[i].lvl;
-				} else if(items[i].id == game.data.item_ids.firewall){
-					if(items[i].lvl > this.firewall_lvl)
-						this.firewall_lvl = items[i].lvl;
-				}
-			}
-		}
-	},
-	Mail: class {
-		constructor(){
-			this.db = [];
-		}
-		add(user, subject, body) {
-			this.db.push({ user, subject, body });
-			game.ui.display("You got mail.");
-		}
-
-		del(index) {
-			if(index == '*'){
-				// I rewrote this 6 times, I am finally happy with it
-				for(var i = 0; this.db.length > 0; i++){
-					this.db.pop();
-				}
-				return `Deleted ${i} emails.`;
-			} else if (index >= 0 && index < this.db.length) {
-				this.db.splice(index, 1);
-				return `Email at index ${index} removed successfully.`;
-			} else {
-				return `Invalid index ${index}.`;
-			}
-		}
-
-		list(){
-			if(this.db.length == 0) return "Your inbox is empty";
-
-			var output = "";
-			for(var i = 0; i < this.db.length; i++){
-				output += "[" + i + "] " + this.db[i].subject + "\n";
-			}
-			return output;
-		}
-
-		find(key){
-			for(var i = 0; i < this.db.length; i++){
-				if(this.db[i].subject == key) return i;
-			}
-			return -1; //if we did not find it
-		}
-
-		get_mail(i){
-			var output = "";
-			if(Number(i) >= this.db.length || Number(i) < 0)
-				output = "<span class=\"error\">Cannot find email at index '" + i + "'</span>"; //TODO error / msg object
-			else
-				output = "<span class=\"mail\">FROM: " + this.db[i].user + "\nSUBJECT: " + this.db[i].subject + "\nBODY: \n" + this.db[i].body + "</span>";
-			return output;
-		}
-	},
-	NPC: class {
-		// used to create servers / NPCs
-		constructor(ip, items, password_strength, motd, trace_time, is_cracked, password, prompt_text) {
-			this.computer = new game.Computer(ip, items, password, password_strength, motd, prompt_text);
-			this.trace_time = trace_time;
-			this.is_cracked = is_cracked;
-			this.computer.files.add({name: "access.log", id: game.data.item_ids.log, lvl: 0.0});
-			this.access_log = "";
-		}
-	
-		async trace(){
-			if(this.trace_time == -1) return; //if trace is off, skip
-			await game.sleep(this.trace_time);
-			if(this.computer.files.find("access.log") >= 0 || (game.player.remote.connected && game.player.remote.host == this.computer.ip)){
-				game.new_game(); // womp womp
-			} else {
-				console.log("Trace from '" + this.computer.ip + "' ended.");
-			}
-		}
-	
-		disconnect(){
-			game.ui.display("\nDisconnected.");
-			game.player.remote.disconnect();
-		}
-	
-		connect(service){
-			game.player.remote.connect(this.computer.ip, service);
-			game.ui.display(this.computer.motd);
-			if(this.is_cracked){
-				game.ui.display("Username: root\nPassword: " + this.computer.password + "\n\nWelcome root.");
-				game.player.computer.prompt.text = "[" + this.computer.ip + "] # "; //TODO change this
-				console.log("Trace started by '" + this.computer.ip + "'");
-				this.trace();
-			} else {
-				game.ui.display("Username: root\nPassword: 1234");
-				game.ui.display("<span class='error'> Invalid username or password </span>");
-				this.disconnect();
-			}
-		}
-	
-		async crack(){
-			await game.sleep(game.defaults.CRACK_TIME_MS - (game.defaults.CRACK_TIME_MS * game.player.stats.cpu_speed)); //sleeps based off of 2min - the cpu speed (if cpu speed is 1, crack done instantly)
-			console.log("Crack complete.");
-			if(game.player.stats.password_list_lvl >= this.computer.password_strength){
-				game.player.mail.add("localhost", "Scan Results " + this.computer.ip, "w00t w00t got r00t. Password '" + this.computer.password + "'");
-				this.is_cracked = true;
-			} else {
-				game.player.mail.add("localhost", "Scan Results " + this.computer.ip, "Passsword list exhausted. Unable to guess password. Maybe you need a better list?");
-			}
-		}
-	
-		async upload_to_player(file_index){
-			//uploads file to player after a set time due to internet speed
-			//file must exist and is checked by the calling function (remote_cmd)
-			await game.sleep(game.defaults.DOWNLOAD_TIME_MS - (game.defaults.DOWNLOAD_TIME_MS * game.player.stats.internet_speed)); //sleeps based off internet speed
-			var file = this.computer.files.storage[file_index];
-			if(file.id == game.data.item_ids.system_files && game.player.computer.files.find(file.name) != -1){
-				//if the player already has this file...skip so the HDD is not full of unremoveable files
-				console.log("System file already on players HDD, skipping");
-			} else {
-				game.player.computer.files.add({name: file.name, id: file.id, lvl: file.lvl});
-			}
-			game.player.mail.add(this.computer.ip, "SFTP Download", "Download of '" + file.name + "' complete.");
-			console.log("Download Complete: " + this.computer.ip + " | " + file.name);
-		}
-	
-		async download_from_player(file_index){
-			//uploads file to server after a set time due to internet speed
-			//file must exist and is checked by the calling function (remote_cmd)
-			await game.sleep(game.defaults.UPLOAD_TIME_MS - (game.defaults.UPLOAD_TIME_MS * game.player.stats.internet_speed)); //sleeps based off internet speed
-			var file = game.player.computer.files.storage[file_index];
-			this.computer.files.add({name: file.name,id: file.id, lvl: file.lvl});
-			game.player.mail.add(this.computer.ip, "SFTP Upload", "Upload of '" + file.name + "' complete.");
-			console.log("Upload Complete: " + this.computer.ip + " | " + file.name);
-		}
-	},
-	Player: class {
-		constructor(name){
-			this.name = name;
-			const items = [{name: "ping", id: game.data.item_ids.system_files, lvl: 0.0}, {name: "hydra", id: game.data.item_ids.system_files, lvl: 0.0}, 
-				{name: "mail", id: game.data.item_ids.system_files, lvl: 0.0}, {name: "README.txt", id: game.data.item_ids.junk, lvl: 0.0}, 
-				{name: "common.passwords.0.1.csv", id: game.data.item_ids.password_list, lvl: 0.1}];
-			this.computer = new game.Computer("127.0.0.1", items, "1337_H@x3r_42069", 0.9, name + "'s PC", game.defaults.DEFAULT_PLAYER_PROMPT, "<span class='prompt'>", "</span>", true);
-			this.stats = new game.Stats(game.defaults.STARTING_MONEY, game.defaults.STARTING_CPU_SPEED, game.defaults.STARTING_INTERNET_SPEED);
-			this.stats.update(this.computer.files.storage); //Updates stats with the new files
-			this.mail = new game.Mail();
-			
-			this.command_history = [];
-			this.history_index = 0; //TODO check if needs to be a number
-			this.quest = 0; //what quest we are on
-			
-			this.remote = {
-			// Remote connections
-				connected: false,
-				host: "", //TODO add support for multiple connections and services
-				service: "",
-				connect(host, service){
-					if(this.connected) return false; // disables connecting to multiple computers at once
-					this.host = host;
-					this.service = service;
-					this.connected = true;
-					return true;
-				},
-		
-				disconnect(host) {
-					//currently disconnects from everything
-					this.host = "";
-					this.service = "";
-					this.connected = false;
-					game.player.computer.prompt.reset();
-					return true; //TODO check if we are already connected, if so disconnect, else return false
-				}
-			};
-			
-			this.god = false; // used for debugging
-		}
-		
-		executeCommand(command) {
-			// Handles commands
-		
-			command = command.slice(this.computer.prompt.text.length);
-		
-			if(command == "") return; //ignore empty lines
-		
-			if(this.computer.prompt.show) game.ui.display(`${game.player.computer.prompt.style_start}${game.player.computer.prompt.text}${game.player.computer.prompt.style_end} ${command}`);
-			let cmd = command.split(' ');
-		
-			// if we are remote, change the state of the remote machine, unless the command is l for local (e.x. "l ls" shows local files, like sftp)
-			if(this.remote.connected && cmd[0] != 'l')
-				return game.npcs.remote_cmd(command, cmd);
-			else if(cmd[0] == 'l')
-				cmd.shift(); //pop off first element
-		
-			var output = '';
-		
-			// check and run commands
-			if(cmd[0] == "clear"){
-				game.ui.clear_terminal();
-			} else if(cmd[0] == "ls"){
-				output = this.computer.files.list().join(" ");
-			} else if(cmd[0] == "mail"){
-				if(cmd.length == 1){
-					output = this.mail.list();
-				} else if(Number(cmd[1]) >= 0){
-					output = this.mail.get_mail(cmd[1]);
-				} else if(cmd[1] == "rm" && cmd.length == 3 && (Number(cmd[2]) >= 0 || cmd[2] == '*')) {
-					output = this.mail.del(cmd[2]);
-				} else {
-					output = "<span class='error'> sh: mail: '" + command + "': command not found</span>";
-				}
-			} else if(cmd[0] == 'hydra') {
-				if(cmd.length == 2){
-					output = "Running 'hydra -l root -P *.csv " + cmd[1] + " ssh' in the background\n";
-					let server = game.npcs.find_ip(cmd[1]); //TODO check for localhost
-					if(server == -1){
-						output += "<span class='error'>Server not found.</span>";
-					} else {
-						game.npcs.servers[server].crack();
-					}
-				} else {
-					output = "Invalid hydra syntax";
-				}
-			} else if(cmd[0] == "ssh"){
-				if(cmd.length == 2){
-					let server = game.npcs.find_ip(cmd[1]);
-					if(this.remote.connected){
-						output = "<span class='error'> sh: '" + cmd[0] + "': does not support multiple active connections</span>";
-					} else if(server == -1){
-						output = "Server not found.";
-					} else {
-						game.npcs.servers[server].connect(game.data.services.ssh);
-					}
-				} else {
-					output = "<span class='error'>Invalid ssh syntax. Usage: ssh [IP]</span>";
-				}
-			} else if(cmd[0] == 'cat'){
-				if(cmd.length == 1) return;
-				for(var i = 1; i < cmd.length; i++){
-					if(this.computer.files.find(cmd[i]) != -1){
-						if(game.data.txt_file_db.hasOwnProperty(cmd[i])){ //pull from DB
-							output += game.data.txt_file_db[cmd[i]] + "\n";
-						} else if(cmd[i].endsWith(".csv")){
-							output += `1234,6969,0420,${game.random.number(1000, 9999)},${game.random.number(1000, 9999)},${game.random.letters(4)}, ...  `;
-						} else {
-							output += "File '" + cmd[i] + "' is not a textfile.";
-						}
-					} else {
-						output += "File '" + cmd[i] + "' is not found.";
-					}
-				}
-			} else if(cmd[0] == "rm"){
-				if(cmd.length == 1){
-					output = "<span class='error'> sh: '" + command + "': missing file to remove</span>";
-				} else {
-					for(let i = 1; i < cmd.length; i++){
-						if(this.computer.files.del(cmd[i]) == false){
-							output = "<span class='error'> sh: '" + command + "': file '" + cmd[i] + "'. Aborting.</span>";
-							break;
-						}
-					}
-				}
-			} else if(cmd[0] == "ping") {
-				if(cmd.length != 2){
-					output = "<span class='error'> sh: '" + command + "': Usage ping [IP]</span>";
-				} else { //TODO check if break statement will work instead of else
-					game.npcs.ping(cmd[1]);
-				}
-			} else if(cmd[0] == "js" && game.defaults.DEBUGGING) {
-				eval(command.slice(3)); // scary
-			} else {
-				output = "<span class='error'> sh: '" + command + "': command not found</span>";
-			}
-			game.ui.display(output);
-		}
-	},
-
 	// -- Objects --
 	ui : {
 		// handles all UI
@@ -499,7 +502,7 @@ const game = {
 			}
 			text += "</p>";
 			this.terminal.innerHTML += text;
-			if(!this.block) input.value = game.player.computer.prompt.display();
+			if(!this.block) input.value = game.player.prompt.display();
 			this.terminal_container.scrollTop = this.terminal_container.scrollHeight; //scroll to bottom on output
 		},
 	
@@ -511,16 +514,16 @@ const game = {
 			if (e.key === 'Enter') {
 				const command = input.value.trim();
 				if (command !== '') {
-					game.player.command_history.push(command.slice(game.player.computer.prompt.display().length));
+					game.player.command_history.push(command.slice(game.player.prompt.display().length));
 					game.player.history_index = game.player.command_history.length;
 					game.player.executeCommand(command);
-					input.value = game.player.computer.prompt.display();
+					input.value = game.player.prompt.display();
 					input.focus();
 				}
 			} else if (e.key === 'ArrowUp') {
 				if (game.player.history_index > 0) {
 					game.player.history_index--;
-					input.value = game.player.computer.prompt.display() + game.player.command_history[game.player.history_index];
+					input.value = game.player.prompt.display() + game.player.command_history[game.player.history_index];
 					input.focus();
 					input.setSelectionRange(input.value.length+1, input.value.length+1);
 				} else {
@@ -529,13 +532,13 @@ const game = {
 			} else if (e.key === 'ArrowDown') {
 				if (game.player.history_index < game.player.command_history.length - 1) {
 					game.player.history_index++;
-					input.value = game.player.computer.prompt.display() + game.player.command_history[game.player.history_index];
+					input.value = game.player.prompt.display() + game.player.command_history[game.player.history_index];
 					input.focus();
 					input.setSelectionRange(input.value.length+1, input.value.length+1);
 				} else {
-					input.value = game.player.computer.prompt.display();
+					input.value = game.player.prompt.display();
 				}
-			} else if (input.selectionStart <= game.player.computer.prompt.display().length && (e.key === "Backspace" || e.key === "Delete" || e.key === 'ArrowLeft')) {
+			} else if (input.selectionStart <= game.player.prompt.display().length && (e.key === "Backspace" || e.key === "Delete" || e.key === 'ArrowLeft')) {
 				e.preventDefault(); // Prevent default behavior (erasing the character)
 			}
 		},
@@ -560,7 +563,7 @@ const game = {
 	
 		init(){
 			this.input.addEventListener('keydown', this.handleInput);
-			this.input.value = game.player.computer.prompt.text;
+			this.input.value = game.player.prompt.text;
 		},
 		
 		clear_terminal(){
@@ -621,7 +624,7 @@ const game = {
 		reserved_ips: ["127.0.0.1", "0.0.0.0", ""],
 		find_ip(ip){
 			for(let i = 0; i < this.servers.length; i++){
-				if(this.servers[i].computer.ip == ip) return i;
+				if(this.servers[i].ip == ip) return i;
 			}
 			for(let i = 0; i < this.reserved_ips.length; i++){ //TODO revisit this addition
 				if(this.reserved_ips[i] == ip) return i;
@@ -702,7 +705,7 @@ const game = {
 				let is_cracked = false;
 				let password = `${game.random.number(10000000, 99999999)}${game.random.letters(5)}`;
 		
-				let new_npc = new game.NPC(ip, items, password_strength, motd, trace_time, is_cracked, password, "# ");
+				let new_npc = new NPC(ip, items, password_strength, motd, trace_time, is_cracked, password, "# ");
 				this.servers.push(new_npc);
 			}
 			console.log(this.servers);
@@ -715,7 +718,7 @@ const game = {
 			if(cmd[0] == "clear"){
 				game.ui.clear_terminal();
 			} else if(cmd[0] == "ls"){
-				output = server.computer.files.list().join(" ");
+				output = server.files.list().join(" ");
 			} else if(cmd[0] == "exit"){ //TODO remove this and handle it in the regular command execution so npcs do not run player methods
 				game.player.remote.disconnect();
 			} else if(cmd[0] == "get"){
@@ -723,11 +726,11 @@ const game = {
 					output = "<span class='error'> sh: '" + command + "': missing file to get</span>";
 				}
 				for(var i = 1; i < cmd.length; i++){
-					let file_location = server.computer.files.find(cmd[i]);
+					let file_location = server.files.find(cmd[i]);
 					if(file_location == -1){ //if we cannot find it
 						output = "<span class='error'> sh: '" + command + "': cannot find file '" + cmd[i] + "'. Aborting</span>";
 						break;
-					} else if(game.player.computer.files.storage.length + 1 > game.player.computer.files.max_files){ //if we run out off space
+					} else if(game.player.files.storage.length + 1 > game.player.files.max_files){ //if we run out off space
 						output = "<span class='error'> sh: '" + command + "': local storage full. Aborting</span>";
 						break;
 					}
@@ -738,11 +741,11 @@ const game = {
 					output = "<span class='error'> sh: '" + command + "': missing file to upload</span>";
 				}
 				for(let i = 1; i < cmd.length; i++){
-					let file_location = game.player.computer.files.find(cmd[i]);
+					let file_location = game.player.files.find(cmd[i]);
 					if(file_location == -1){ //if we cannot find it
 						output = "<span class='error'> sh: '" + command + "': cannot find file '" + cmd[i] + "'. Aborting</span>";
 						break;
-					} else if(server.storage.length + 1 > server.computer.files.max_files){ //if server runs out off space
+					} else if(server.storage.length + 1 > server.files.max_files){ //if server runs out off space
 						output = "<span class='error'> sh: '" + command + "': remote storage full. Aborting</span>";
 						break;
 					}
@@ -753,7 +756,7 @@ const game = {
 					output = "<span class='error'> sh: '" + command + "': missing file to remove</span>";
 				}
 				for(let i = 1; i < cmd.length; i++){
-					if(server.computer.files.del(cmd[i]) == false){
+					if(server.files.del(cmd[i]) == false){
 						output = "<span class='error'> sh: '" + command + "': file '" + cmd[i] + "'. Aborting.</span>";
 						break;
 					}
@@ -769,7 +772,7 @@ const game = {
 					}
 					server.access_log = "";
 					for(let i = 0; i < 5; i++){
-						server.access_log += this.servers[game.random.number(0, this.servers.length)].computer.ip + "\n";
+						server.access_log += this.servers[game.random.number(0, this.servers.length)].ip + "\n";
 					}
 					output = server.access_log;
 				} else {
@@ -835,7 +838,7 @@ const game = {
 		}
 		
 		// Create the player
-		this.player = new this.Player("Anonymous");
+		this.player = new Player("Anonymous");
 		
 		// Generate the UI
 		this.ui.init();
@@ -862,10 +865,10 @@ const game = {
 				var ip = this.npcs.generate_ip();
 				var items = [{name: "cuda.0.1.fw", id: this.data.item_ids.firewall, lvl: 0.1}, {name: "todo.doc", id: this.data.item_ids.junk, lvl: 0.0}];
 				var motd = "Region High School - Welcome to the home of the Wild Cats";
-				let new_npc = new this.NPC(ip, items, 0.1, motd, -1, false, "G0_W1ldC@t$!");
+				let new_npc = new NPC(ip, items, 0.1, motd, -1, false, "G0_W1ldC@t$!");
 				this.npcs.servers.push(new_npc);
 				this.player.mail.add('ya-boi', 'Welcome', this.data.quests[this.data.quest_ids.Welcome] + "\nP.S. Here is the ip: " + ip);
-				this.player.executeCommand(this.player.computer.prompt.text + "cat README.txt");
+				this.player.executeCommand(this.player.prompt.text + "cat README.txt");
 				break;
 		}
 	},
