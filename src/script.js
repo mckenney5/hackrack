@@ -29,7 +29,6 @@ SOFTWARE.
 /*
  * --- TODO ---
  * Add a random chance that an NPC has a useful hacking tool (e.x. password list)
- * Move the .computer object into the main object
  * Add a quest class, maybe randomly generate side quests for $$$
  * Change display to take a message type, e.x. display(output, ui.ids.error); make an ui.ids to make life easier
  * Add logic to complete quests
@@ -40,7 +39,6 @@ SOFTWARE.
  * Add proxies that slow down tracing by an order of magnitude
  * Add way to interact with a hardware, software, and leaks shop
  * Add spam, bitcoin miners, bots, and so on for passive income, with antivirus to remove viruses
- * Add the player's IP to server list so you can 'hack' yourself and see your ip in access.log
  * Add total processes to player to increase process time (stops concurrent downloads)
  * Move players prompt to the UI, make display(prompt=ui.prompt, data)
  * - Add commands-
@@ -279,8 +277,10 @@ class NPC extends Computer {
 		if(this.is_cracked){
 			game.ui.display("Username: root\nPassword: " + this.password + "\n\nWelcome root.");
 			game.player.prompt.text = "[" + this.ip + "] # "; //TODO change this
-			console.log("Trace started by '" + this.ip + "'");
-			this.trace();
+			if(this.trace_time != -1){ 
+				console.log("Trace started by '" + this.ip + "'");
+				this.trace();
+			}
 		} else {
 			game.ui.display("Username: root\nPassword: 1234");
 			game.ui.display("<span class='error'> Invalid username or password </span>");
@@ -463,6 +463,8 @@ class Player extends Computer {
 			}
 		} else if(cmd[0] == "exit") {
 			if(this.remote.connected) this.remote.disconnect();
+		} else if(cmd[0] == "ip") {
+			output = "Running 'hostname -I'\n" + this.ip;
 		} else if(cmd[0] == "js" && game.defaults.DEBUGGING) {
 			eval(command.slice(3)); // scary
 		} else {
@@ -794,14 +796,19 @@ var game = {
 						game.ui.display(server.access_log);
 						return;
 					}
+					//If we did not init an access.log, create one
 					server.access_log = "";
 					for(let i = 0; i < 5; i++){
-						server.access_log += this.servers[game.random.number(0, this.servers.length)].ip + "\n";
+						//Adds random IPs to the access.log, can be duplicates
+						server.access_log += this.servers[game.random.number(0, this.servers.length-1)].ip + "\n";
 					}
+					server.access_log += game.player.ip; //add the player's IP
 					output = server.access_log;
 				} else {
 					output = "<span class='error'> sh: '" + command + "': cannot display binary file</span>";
 				}
+			} else if(cmd[0] == "ip") {
+				output = "Running 'hostname -I'\n" + server.ip;
 			} else {
 				output = "<span class='error'> sh: '" + command + "': command not found</span>";
 			}
