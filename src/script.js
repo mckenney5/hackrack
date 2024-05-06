@@ -39,7 +39,7 @@ SOFTWARE.
  * Add proxies that slow down tracing by an order of magnitude
  * Add way to interact with a hardware, software, and leaks shop
  * Add spam, bitcoin miners, bots, and so on for passive income, with antivirus to remove viruses
- * (maybe) Add 127.0.0.1 to server list so you can 'hack' yourself?
+ * Add the player's IP to server list so you can 'hack' yourself and see your ip in access.log
  * Add total processes to player to increase process time (stops concurrent downloads)
  * Move players prompt to the UI, make display(prompt=ui.prompt, data)
  * - Add commands-
@@ -271,6 +271,7 @@ const game = {
 			this.trace_time = trace_time;
 			this.is_cracked = is_cracked;
 			this.computer.files.add({name: "access.log", id: game.data.item_ids.log, lvl: 0.0});
+			this.access_log = "";
 		}
 	
 		async trace(){
@@ -710,6 +711,7 @@ const game = {
 			// Handles remote commands when the player is connected to another server
 			var server = this.servers[this.find_ip(game.player.remote.host)]; //assumes IP is not local, or else some weird bugs will prolly happen
 			var output = "";
+			
 			if(cmd[0] == "clear"){
 				game.ui.clear_terminal();
 			} else if(cmd[0] == "ls"){
@@ -740,7 +742,7 @@ const game = {
 					if(file_location == -1){ //if we cannot find it
 						output = "<span class='error'> sh: '" + command + "': cannot find file '" + cmd[i] + "'. Aborting</span>";
 						break;
-					} else if(server.storage.length + 1 > server.max_files){ //if server runs out off space
+					} else if(server.storage.length + 1 > server.computer.files.max_files){ //if server runs out off space
 						output = "<span class='error'> sh: '" + command + "': remote storage full. Aborting</span>";
 						break;
 					}
@@ -758,6 +760,21 @@ const game = {
 				}
 			} else if(cmd[0] == "ssh" || cmd[0] == "telnet"){
 				output = "<span class='error'> sh: '" + cmd[0] + "': does not support proxy connections</span>";
+			} else if(cmd[0] == "cat"){
+				if(cmd.length == 1) return;
+				if(cmd[1] == "access.log"){
+					if(server.access_log != ""){
+						game.ui.display(server.access_log);
+						return;
+					}
+					server.access_log = "";
+					for(let i = 0; i < 5; i++){
+						server.access_log += this.servers[game.random.number(0, this.servers.length)].computer.ip + "\n";
+					}
+					output = server.access_log;
+				} else {
+					output = "<span class='error'> sh: '" + command + "': cannot display binary file</span>";
+				}
 			} else {
 				output = "<span class='error'> sh: '" + command + "': command not found</span>";
 			}
