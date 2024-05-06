@@ -329,7 +329,7 @@ class Player extends Computer {
 		const items = [{name: "ping", id: game.data.item_ids.system_files, lvl: 0.0}, {name: "hydra", id: game.data.item_ids.system_files, lvl: 0.0}, 
 			{name: "mail", id: game.data.item_ids.system_files, lvl: 0.0}, {name: "README.txt", id: game.data.item_ids.junk, lvl: 0.0}, 
 			{name: "common.passwords.0.1.csv", id: game.data.item_ids.password_list, lvl: 0.1}];
-		super("127.0.0.1", items, "1337_H@x3r_42069", 0.9, name + "'s PC", game.defaults.DEFAULT_PLAYER_PROMPT, "<span class='prompt'>", "</span>", true);
+		super(game.npcs.generate_ip(), items, "1337_H@x3r_42069", 0.9, name + "'s PC", game.defaults.DEFAULT_PLAYER_PROMPT, "<span class='prompt'>", "</span>", true);
 		this.name = name;
 		this.stats = new Stats(game.defaults.STARTING_MONEY, game.defaults.STARTING_CPU_SPEED, game.defaults.STARTING_INTERNET_SPEED);
 		this.stats.update(this.files.storage); //Updates stats with the new files
@@ -338,6 +338,7 @@ class Player extends Computer {
 		this.command_history = [];
 		this.history_index = 0;
 		this.quest = 0; //what quest we are on
+		game.npcs.reserved_ips.push(this.ip); //Add IP so we do not use it for NPCs
 		
 		this.remote = {
 		// Remote connections
@@ -376,8 +377,8 @@ class Player extends Computer {
 		let cmd = command.split(' ');
 	
 		// if we are remote, change the state of the remote machine, unless the command is l for local (e.x. "l ls" shows local files, like sftp)
-		if(this.remote.connected && cmd[0] != 'l')
-			return game.npcs.remote_cmd(command, cmd);
+		if(this.remote.connected && cmd[0] != 'l' && !(game.npcs.reserved_ips.includes(this.remote.host)))
+			return game.npcs.remote_cmd(command, cmd); //if we are connected to an npc and we want to run a command there, do it
 		else if(cmd[0] == 'l')
 			cmd.shift(); //pop off first element
 	
@@ -401,7 +402,7 @@ class Player extends Computer {
 		} else if(cmd[0] == 'hydra') {
 			if(cmd.length == 2){
 				output = "Running 'hydra -l root -P *.csv " + cmd[1] + " ssh' in the background\n";
-				let server = game.npcs.find_ip(cmd[1]); //TODO check for localhost
+				let server = game.npcs.find_npc(cmd[1]);
 				if(server == -1){
 					output += "<span class='error'>Server not found.</span>";
 				} else {
@@ -412,9 +413,14 @@ class Player extends Computer {
 			}
 		} else if(cmd[0] == "ssh"){
 			if(cmd.length == 2){
-				let server = game.npcs.find_ip(cmd[1]);
+				let server = game.npcs.find_npc(cmd[1]);
 				if(this.remote.connected){
 					output = "<span class='error'> sh: '" + cmd[0] + "': does not support multiple active connections</span>";
+				} else if(game.npcs.reserved_ips.includes(cmd[1])){
+					//if we connect to ourself
+					this.remote.connect(cmd[1], game.data.services.ssh);
+					game.ui.display(this.motd);
+					game.ui.display(`Username: ${this.name}\nPassword: ${this.password}\n\nWelcome ${this.name}.`);
 				} else if(server == -1){
 					output = "Server not found.";
 				} else {
@@ -455,6 +461,8 @@ class Player extends Computer {
 			} else { //TODO check if break statement will work instead of else
 				game.npcs.ping(cmd[1]);
 			}
+		} else if(cmd[0] == "exit") {
+			if(this.remote.connected) this.remote.disconnect();
 		} else if(cmd[0] == "js" && game.defaults.DEBUGGING) {
 			eval(command.slice(3)); // scary
 		} else {
@@ -621,20 +629,35 @@ var game = {
 	},
 	npcs : {
 		servers: [],
-		reserved_ips: ["127.0.0.1", "0.0.0.0", ""],
-		find_ip(ip){
+		reserved_ips: ["127.0.0.1", "0.0.0.0"],
+		find_npc(ip){
+			//returns an index if the NPC exists, -1 if we cannot find it
 			for(let i = 0; i < this.servers.length; i++){
 				if(this.servers[i].ip == ip) return i;
 			}
-			for(let i = 0; i < this.reserved_ips.length; i++){ //TODO revisit this addition
-				if(this.reserved_ips[i] == ip) return i;
-			}
 			return -1;
+		},
+		find_ip(ip){
+			//checks if the IP is in use
+			
+			//Search the reserved IPs
+			for(let i = 0; i < this.reserved_ips.length; i++){ //TODO revisit this addition
+				if(this.reserved_ips[i] == ip) return true;
+			}
+			
+			//Check if the IP was blank
+			if(ip == "") return true;
+			
+			//Check if the IP is assigned to an NPC
+			if(this.find_npc(ip) > -1) return true;
+			
+			//If it is nowhere then return false
+			return false;
 		},
 		generate_ip(){
 			// Returns a valid, unused, ipv4 address. Can technically hang when all IP ranges are full
 			var ip = `${game.random.number(0,255)}.${game.random.number(0,255)}.${game.random.number(0,255)}.${game.random.number(0,255)}`;
-			while(this.find_ip(ip) != -1)
+			while(this.find_ip(ip) != false)
 				ip = `${game.random.number(0,255)}.${game.random.number(0,255)}.${game.random.number(0,255)}.${game.random.number(0,255)}`;
 			return ip;
 		},
@@ -643,7 +666,7 @@ var game = {
 			// Now you must be thinking, did you look up the source code to iputils' ping? That would have been easier
 			game.ui.toggle_block(true); //block input while we run ping
 			game.ui.display(`Running 'ping -c ${game.defaults.PING_COUNT} ${ip}'\n${ip} (${ip}) with 56(84) bytes of data.`);
-			if(this.find_ip(ip) == -1){
+			if(this.find_ip(ip) == false){
 				//If we cannot find the ip
 				await game.sleep(game.defaults.PING_DELAY_MS * game.defaults.PING_COUNT);
 				game.ui.display(`\n--- ${ip} ping statistics --- \n${game.defaults.PING_COUNT} packets transmitted, 0 received, 100% packet loss, time ${game.defaults.PING_DELAY_MS*game.defaults.PING_COUNT}`);
@@ -656,9 +679,10 @@ var game = {
 			var mdev = -1.0;
 			var ran = -1.0;
 			var avg = 0.0;
+			var is_localhost = this.reserved_ips.includes(ip);
 			for(let i = 0; i < game.defaults.PING_COUNT; i++){
 				ran = game.random.number(11111, 99999);
-				if(ip == "127.0.0.1" || ip == "0.0.0.0") ran = ran / 1000; //make the latency wayy lower since its localhost
+				if(is_localhost) ran = ran / 1000; //make the latency wayy lower since its localhost
 				stats.push(ran);
 				await game.sleep(game.defaults.PING_DELAY_MS);
 				game.ui.display(`64 bytes from ${ip}: icmp_seq=${i} ttl=118 time=${(ran/1000).toFixed(3)} ms`);
@@ -685,7 +709,7 @@ var game = {
 			max = (max/1000).toFixed(3);
 			game.ui.display(`\n--- ${ip} ping statistics --- \n${game.defaults.PING_COUNT} packets transmitted, ${game.defaults.PING_COUNT} received, 0% packet loss, time ${game.defaults.PING_DELAY_MS*game.defaults.PING_COUNT}ms`);
 			game.ui.display(`rtt min/avg/max/mdev = ${min}/${avg}/${max}/${mdev} ms`);
-			game.ui.toggle_block(false); //block input while we run ping
+			game.ui.toggle_block(false); //unblock input since we are done
 		},
 		generate(n){
 			console.log(`Generating ${n} NPCs`);
@@ -712,7 +736,7 @@ var game = {
 		},
 		remote_cmd(command, cmd){
 			// Handles remote commands when the player is connected to another server
-			var server = this.servers[this.find_ip(game.player.remote.host)]; //assumes IP is not local, or else some weird bugs will prolly happen
+			var server = this.servers[this.find_npc(game.player.remote.host)]; //assumes IP is not local, or else some weird bugs will prolly happen
 			var output = "";
 			
 			if(cmd[0] == "clear"){
