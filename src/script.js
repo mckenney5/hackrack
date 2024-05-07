@@ -101,7 +101,7 @@ class Files {
 	
 	del(name){
 		var index = this.find(name);
-		if(index != -1 && this.storage[index].id != game.data.item_ids.system_files){
+		if(index != -1 && this.storage[index].id != game.data.item_ids.system_file){
 			//if the item is found
 			this.storage.splice(index, 1);
 			console.log(`File at index ${index} removed successfully.`);
@@ -117,9 +117,30 @@ class Files {
 	}
 	
 	list(){ //TODO consider adding custom spans to this func
-		var data = [];
+		let data = [];
+		let start = "";
+		let end = "";
+		let s = this.storage;
+		let type = game.data.item_ids;
 		for(let i = 0; i < this.storage.length; i++){
-			data.push(this.storage[i].name);
+			if(s[i].id == type.system_file){
+				start = "<span class='system_file'>";
+				end = "</span>";
+			} else if(s[i].id == type.quest_item){
+				start = "<span class='quest_file'>";
+				end = "</span>";
+			} else if(s[i].id == type.log){
+				start = "<span class='log_file'>";
+				end = "</span>";
+			} else if(s[i].id == type.script){
+				start = "<span class='script_file'>";
+				end = "</span>";
+			} else {
+				start = "";
+				end = "";
+			}
+			
+			data.push(start + s[i].name + end);
 		}
 		return data;
 	}
@@ -231,10 +252,10 @@ class Computer {
 		// Add files
 		this.files = new Files();
 		// Add Default files
-		this.files.add({name: "sh", id: game.data.item_ids.system_files, lvl: 0.0});
-		this.files.add({name: "telnet", id: game.data.item_ids.system_files, lvl: 0.0});
-		this.files.add({name: "ssh", id: game.data.item_ids.system_files, lvl: 0.0});
-		this.files.add({name: "cat", id: game.data.item_ids.system_files, lvl: 0.0});
+		this.files.add({name: "sh", id: game.data.item_ids.system_file, lvl: 0.0});
+		this.files.add({name: "telnet", id: game.data.item_ids.system_file, lvl: 0.0});
+		this.files.add({name: "ssh", id: game.data.item_ids.system_file, lvl: 0.0});
+		this.files.add({name: "cat", id: game.data.item_ids.system_file, lvl: 0.0});
 		for(let i = 0; i < items.length; i++){
 			this.files.add(items[i]);
 		}
@@ -305,7 +326,7 @@ class NPC extends Computer {
 		game.ui.display("Download started.");
 		await game.sleep(game.defaults.DOWNLOAD_TIME_MS - (game.defaults.DOWNLOAD_TIME_MS * game.player.stats.internet_speed)); //sleeps based off internet speed
 		var file = this.files.storage[file_index];
-		if(file.id == game.data.item_ids.system_files && game.player.files.find(file.name) != -1){
+		if(file.id == game.data.item_ids.system_file && game.player.files.find(file.name) != -1){
 			//if the player already has this file...skip so the HDD is not full of unremoveable files
 			console.log("System file already on players HDD, skipping");
 		} else {
@@ -328,9 +349,9 @@ class NPC extends Computer {
 }
 class Player extends Computer {
 	constructor(name){
-		const items = [{name: "ping", id: game.data.item_ids.system_files, lvl: 0.0}, {name: "hydra", id: game.data.item_ids.system_files, lvl: 0.0}, 
-			{name: "mail", id: game.data.item_ids.system_files, lvl: 0.0}, {name: "README.txt", id: game.data.item_ids.junk, lvl: 0.0}, 
-			{name: "common.passwords.0.1.csv", id: game.data.item_ids.password_list, lvl: 0.1}];
+		const items = [{name: "ping", id: game.data.item_ids.system_file, lvl: 0.0}, {name: "hydra", id: game.data.item_ids.system_file, lvl: 0.0}, 
+			{name: "mail", id: game.data.item_ids.system_file, lvl: 0.0}, {name: "README.txt", id: game.data.item_ids.junk, lvl: 0.0}, 
+			{name: "common.passwords.0.1.csv", id: game.data.item_ids.passsword_list, lvl: 0.1}];
 		super(game.npcs.generate_ip(), items, "1337_H@x3r_42069", 0.9, name + "'s PC", game.defaults.DEFAULT_PLAYER_PROMPT, "<span class='prompt'>", "</span>", true);
 		this.name = name;
 		this.stats = new Stats(game.defaults.STARTING_MONEY, game.defaults.STARTING_CPU_SPEED, game.defaults.STARTING_INTERNET_SPEED);
@@ -603,7 +624,7 @@ var game = {
 		},
 		
 		item_ids: {
-			'system_files'	:-1,
+			'system_file'		:-1,
 			'junk'					: 0,
 			'quest_item'		: 1,
 			'log'						: 2,
@@ -900,7 +921,7 @@ var game = {
 			case 0:
 				// 1 -  TODO add logic for quest completition
 				var ip = this.npcs.generate_ip();
-				var items = [{name: "cuda.0.1.fw", id: this.data.item_ids.firewall, lvl: 0.1}, {name: "todo.doc", id: this.data.item_ids.junk, lvl: 0.0}];
+				var items = [{name: "cuda.0.1.fw", id: this.data.item_ids.quest_item, lvl: 0.1}, {name: "todo.doc", id: this.data.item_ids.junk, lvl: 0.0}];
 				var motd = "Region High School - Welcome to the home of the Wild Cats";
 				let new_npc = new NPC(ip, items, 0.1, motd, -1, false, "G0_W1ldC@t$!");
 				this.npcs.servers.push(new_npc);

@@ -54,6 +54,18 @@ body, html{
   color: maroon;
 }
 
+.quest_file {
+  color: pink;
+}
+
+.log_file {
+  color: yellow;
+}
+
+.script_file {
+  color: limegreen;
+}
+
 .prompt {
   color: white;
 }
