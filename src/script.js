@@ -28,10 +28,11 @@ SOFTWARE.
 
 /*
  * --- TODO ---
+ * Add a mail object {from, subject, body}
+ * Add ability to generate a quest NPC in the quest class
+ * Add randomly generated quests
  * Add a random chance that an NPC has a useful hacking tool (e.x. password list)
- * Add a quest class, maybe randomly generate side quests for $$$
  * Change display to take a message type, e.x. display(output, ui.ids.error); make an ui.ids to make life easier
- * Add logic to complete quests
  * Add a way for a captive UI that waits for a command to finish, or allows specific interactions
  *    (look at keydown events and switch the handlers)
  * Sanatize user input (remove html tags)
@@ -50,11 +51,11 @@ SOFTWARE.
  * 	- mail send (opens up a mail wizard to send data, should follow smtp protocol (e.x. MAILTO))
  * 	- poweroff (exits game, if remote and root - turns off server for some ammount of time)
  * 	- rss (makes news pop up, should add things about defacement, stocks, etc)
- * 	- neofetch (dispalys info about the targeted computer)
+ * 	- neofetch (displays info about the targeted computer, RIP)
  *  - Add bash && and &
  *
  * - Missions -
- * 	- Welcome: hack a high schools network switch and download their firewall
+ * 	- Welcome: hack a high school's network switch and download their firewall
  * 	- Crawl: hack into a high schools web server and replace index.html
  * 	- Walk: hack into the schools database server and download (and sell) their staff_and_students.db
  * 	- Run: hack into the local PDs VM and change just your file with a decoy .doc file, download all .doc files
@@ -63,6 +64,8 @@ SOFTWARE.
  * --- Wish List ---
  * 	- Add windows servers with cmd.exe and cmd commands
  * 	- vuln scanner
+ * 	- Add tab completes (like bash)
+ * 	- Add full screen mode (e.x. no computer in ui.html)
  *
  * --- Notes ---
  * For viruses to work, there will need to be a saved list of those servers and those IPs should
@@ -99,9 +102,9 @@ class Files {
 		return true;
 	}
 	
-	del(name){
+	del(name, force=false){
 		var index = this.find(name);
-		if(index != -1 && this.storage[index].id != game.data.item_ids.system_file){
+		if(index != -1 && (force == true || this.storage[index].id != game.data.item_ids.system_file)){
 			//if the item is found
 			this.storage.splice(index, 1);
 			console.log(`File at index ${index} removed successfully.`);
@@ -245,6 +248,47 @@ class Mail {
 		return output;
 	}
 }
+class Quest {
+	constructor(from, subject, body, reward, check){
+		this.complete = false; //if the quest is done
+		this.from = from; //intro mail from
+		this.subject = subject; //also doubles as the quest name
+		this.body = body; //intro mail body
+		
+		this.rewards = reward; //object with money, cpu, internet, and files[] elements
+		
+		if(typeof check !== 'function'){
+			throw new Error("Quest object initalized without a valid check function.");
+		}
+		this.check = check; //a custom function to check if the quest conditions are met. Must return true/false
+	}
+	start(){
+		//What runs when we start the quest
+		game.player.mail.add(this.from, this.subject, this.body);
+	}
+	win(){
+		//If the quest is complete, give the rewards
+		if(this.complete) return; //disables repeat of the same quest
+
+		console.log("Quest '" + this.subject + "' complete");
+		game.player.stats.money += this.rewards.money;
+		game.player.stats.cpu_speed += this.rewards.cpu;
+		game.player.stats.internet_speed += this.rewards.internet;
+		
+		//Remove files (like quest items)
+		for(let i = 0; i < this.rewards.del_files.length; i++){
+			game.player.files.del(this.rewards.del_files[i], true);
+		}
+		
+		//Add new files (like new tools)
+		for(let i = 0; i < this.rewards.add_files.length; i++){
+			game.player.files.add(this.rewards.add_files[i]);
+		}
+		console.log("Rewards given:");
+		console.log(this.rewards);
+		this.complete = true;
+	}
+}
 class Computer {
 	constructor(ip, items, password, password_strength, motd, prompt_text, prompt_start, prompt_end, prompt_show){
 		this.ip = ip;
@@ -332,7 +376,7 @@ class NPC extends Computer {
 		} else {
 			game.player.files.add({name: file.name, id: file.id, lvl: file.lvl});
 		}
-		game.player.mail.add(this.ip, "SFTP Download", "Download of '" + file.name + "' complete.");
+		game.player.mail.add(this.ip, "SFTP Download from " + this.ip, "Download of '" + file.name + "' complete.");
 		console.log("Download Complete: " + this.ip + " | " + file.name);
 	}
 
@@ -343,7 +387,7 @@ class NPC extends Computer {
 		await game.sleep(game.defaults.UPLOAD_TIME_MS - (game.defaults.UPLOAD_TIME_MS * game.player.stats.internet_speed)); //sleeps based off internet speed
 		var file = game.player.files.storage[file_index];
 		this.files.add({name: file.name,id: file.id, lvl: file.lvl});
-		game.player.mail.add(this.ip, "SFTP Upload", "Upload of '" + file.name + "' complete.");
+		game.player.mail.add(this.ip, "SFTP Upload from " + this.ip, "Upload of '" + file.name + "' complete.");
 		console.log("Upload Complete: " + this.ip + " | " + file.name);
 	}
 }
@@ -541,6 +585,9 @@ var game = {
 			this.terminal.innerHTML += text;
 			if(!this.block) input.value = game.player.prompt.display();
 			this.terminal_container.scrollTop = this.terminal_container.scrollHeight; //scroll to bottom on output
+			
+			//TODO move this somewhere else, probably after a command is run
+			game.quests.check();
 		},
 	
 		handleInput(e) {
@@ -610,18 +657,6 @@ var game = {
 	},
 	data : {
 		// -- Hashmaps -- \\
-		
-		quests: {
-			0: "I am glad you finally decided to use your skills!\nFirst things first, lets get you a professional firewall. Hack into our high school's router and download the cuda.0.1.fw program. Do NOT forget to delete logs! To connect to the server, first run <span class='cmd'>hydra [ip]</span> to crack the ssh password, then get the password from your email. Once you have the password, run the command <span class='cmd'>ssh [ip]</span>, type in the password, do the command <span class='cmd'>get cuda.0.1.fw</span>, THEN run <span class='cmd'>rm access.log</span>, then <span class='cmd'>exit</span>\nIt is not currently school hours so they will not run an IP trace on you. EZPZ"
-		},
-		
-		quest_ids: {
-			'Welcome'		: 0,
-			'Crawl'			: 1,
-			'Walk'			: 2,
-			'Run'				: 3,
-			'Sprint'		: 4
-		},
 		
 		item_ids: {
 			'system_file'		:-1,
@@ -866,7 +901,75 @@ var game = {
 			return Math.random();
 		}
 	},
+	quests : {
+		available: [], //available quests
+		from: {
+			0: "ya-boi"
+		},
+		
+		subject: {
+			0: "Welcome"
+		},
+		
+		body: {
+			0: "I am glad you finally decided to use your skills!\nFirst things first, lets get you a professional firewall. Hack into our high school's router and download the cuda.0.1.fw program. Do NOT forget to delete logs! To connect to the server, first run <span class='cmd'>hydra [ip]</span> to crack the ssh password, then get the password from your email. Once you have the password, run the command <span class='cmd'>ssh [ip]</span>, type in the password, do the command <span class='cmd'>get cuda.0.1.fw</span>, THEN run <span class='cmd'>rm access.log</span>, then <span class='cmd'>exit</span>\nIt is not currently school hours so they will not run an IP trace on you. EZPZ"
+		},
+		
+		ids: {
+			'Welcome'		: 0,
+			'Crawl'			: 1,
+			'Walk'			: 2,
+			'Run'				: 3,
+			'Sprint'		: 4
+		},
+		
+		run(id){
+			//handles quests
+			switch(id){
+				case 0:
+					//reward object: money, cpu, internet, add_files[{name, id, lvl}], and del_files[] elements
+					//from, subject, body, reward, check
+					const quest_item = "cuda.0.1.fw";
+					let ip = game.npcs.generate_ip();
+					let items = [{name: quest_item, id: game.data.item_ids.quest_item, lvl: 0.1}, {name: "todo.doc", id: game.data.item_ids.junk, lvl: 0.0}];
+					let motd = "Region High School - Welcome to the home of the Wild Cats";
+					let new_npc = new NPC(ip, items, 0.1, motd, -1, false, "G0_W1ldC@t$!");
+					game.npcs.servers.push(new_npc);
+					const reward = {
+						money: 100.0,
+						cpu: 0.0,
+						internet: 0.0,
+						add_files : [{name: quest_item, id: game.data.item_ids.firewall, lvl: 0.1}],
+						del_files : [quest_item]
+					};
+					const check = function(){
+						// conditions that must be true to complete the quest
+						return (game.player.files.find(quest_item) > -1);
+					};
+					let q = new Quest(this.from[id], this.subject[id], this.body[id] + "\n IP: " + ip, reward, check);
+					this.available.push(q);
+					q.start();
+					break;
+			}
+		},
 
+		check(){
+			//TODO make this an async check ever x seconds instead of checking at every display() call
+			for(let i = 0; i < this.available.length; i++){
+				if(this.available[i].complete == false && this.available[i].check() == true){
+					this.available[i].win();
+					//TODO add more details on winnings and add custom award message
+					game.player.mail.add(this.available[i].from, "Re: " + this.available[i].subject, 
+							`Good job, here is your reward:\n Money: ${this.available[i].rewards.money}\n`);
+					//TODO start next quest
+					//TODO remove quest NPC
+					//Remove quest
+					this.available.splice(i, 1);
+				}
+			}
+		},
+	},
+	
 	// -- Methods --
 	sleep(ms){
 		// sets a timer
@@ -909,28 +1012,16 @@ var game = {
 		//TODO
 		
 		// Start the first quest
-		this.run_quest(this.player.quest);
+		this.quests.run(this.player.quest);
+		
+		// Open README
+		this.player.executeCommand(this.player.prompt.text + "cat README.txt");
 		
 		// Show that we are initalized
 		this.initalized = true;
 		
 	},
-	run_quest(id){
-		//handles quests
-		switch(id){
-			case 0:
-				// 1 -  TODO add logic for quest completition
-				var ip = this.npcs.generate_ip();
-				var items = [{name: "cuda.0.1.fw", id: this.data.item_ids.quest_item, lvl: 0.1}, {name: "todo.doc", id: this.data.item_ids.junk, lvl: 0.0}];
-				var motd = "Region High School - Welcome to the home of the Wild Cats";
-				let new_npc = new NPC(ip, items, 0.1, motd, -1, false, "G0_W1ldC@t$!");
-				this.npcs.servers.push(new_npc);
-				this.player.mail.add('ya-boi', 'Welcome', this.data.quests[this.data.quest_ids.Welcome] + "\nP.S. Here is the ip: " + ip);
-				this.player.executeCommand(this.player.prompt.text + "cat README.txt");
-				break;
-		}
-	},
-	tgm(power=0.95){
+	tgm(power=0.99){
 		//used for new games only
 		if(!this.defaults.DEBUGGING){
 			console.log("Debugging disabled, god mode blocked");
