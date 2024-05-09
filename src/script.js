@@ -28,7 +28,10 @@ SOFTWARE.
 
 /*
  * --- TODO ---
- * Add a mail object {from, subject, body}
+ * Add a mail object {from, subject, body} and use it other places
+ * Add an eta for cracking, download, and upload
+ * Have the first quest check if access.log is deleted, if not on disconnect, send an email reminding the player
+ * Add a sliding scale of crack time that accounts for password_list_lvl vs password_strength
  * Add ability to generate a quest NPC in the quest class
  * Add randomly generated quests
  * Add a random chance that an NPC has a useful hacking tool (e.x. password list)
@@ -42,6 +45,7 @@ SOFTWARE.
  * Add spam, bitcoin miners, bots, and so on for passive income, with antivirus to remove viruses
  * Add total processes to player to increase process time (stops concurrent downloads)
  * Move players prompt to the UI, make display(prompt=ui.prompt, data)
+ * Check the random password strength and generating a fitting password (e.x. pass_str < 0.2 random.num(1111, 9999), pass_str > 0.8 random.words(3))
  * - Add commands-
  * 	- lynx <url> (connects to a web page, can be used for shops)
  * 	- telnet <ip> (connects to telnet server for things like shops)
@@ -66,6 +70,7 @@ SOFTWARE.
  * 	- vuln scanner
  * 	- Add tab completes (like bash)
  * 	- Add full screen mode (e.x. no computer in ui.html)
+ * 	- Add ASCII art
  *
  * --- Notes ---
  * For viruses to work, there will need to be a saved list of those servers and those IPs should
@@ -187,13 +192,18 @@ class Stats {
 	}
 	
 	update(items){
+		console.log("Running update");
 		for(var i = 0; i < items.length; i++){
 			if(items[i].id == game.data.item_ids.password_list){
-				if(items[i].lvl > this.password_list_lvl)
+				if(items[i].lvl > this.password_list_lvl){
 					this.password_list_lvl = items[i].lvl;
+					console.log("Updated Password Level");
+				}
 			} else if(items[i].id == game.data.item_ids.firewall){
-				if(items[i].lvl > this.firewall_lvl)
+				if(items[i].lvl > this.firewall_lvl){
 					this.firewall_lvl = items[i].lvl;
+					console.log("Updated Firewall Level");
+				}
 			}
 		}
 	}
@@ -202,9 +212,14 @@ class Mail {
 	constructor(){
 		this.db = [];
 	}
-	add(user, subject, body) {
-		this.db.push({ user, subject, body });
+	add(from, subject, body) {
+		this.db.push({from: from, subject: subject, body: body });
 		game.ui.display("You got mail.");
+	}
+	
+	send(email){
+		//splits up the email object with a from, subject, and body)
+		return this.add(email.from, email.subject, email.body);
 	}
 
 	del(index) {
@@ -244,16 +259,14 @@ class Mail {
 		if(Number(i) >= this.db.length || Number(i) < 0)
 			output = "<span class=\"error\">Cannot find email at index '" + i + "'</span>"; //TODO error / msg object
 		else
-			output = "<span class=\"mail\">FROM: " + this.db[i].user + "\nSUBJECT: " + this.db[i].subject + "\nBODY: \n" + this.db[i].body + "</span>";
+			output = "<span class=\"mail\">FROM: " + this.db[i].from + "\nSUBJECT: " + this.db[i].subject + "\nBODY: \n" + this.db[i].body + "</span>";
 		return output;
 	}
 }
 class Quest {
-	constructor(from, subject, body, reward, check){
+	constructor(email, reward, check){
 		this.complete = false; //if the quest is done
-		this.from = from; //intro mail from
-		this.subject = subject; //also doubles as the quest name
-		this.body = body; //intro mail body
+		this.email = email; //object that holds the from, subject, and body
 		
 		this.rewards = reward; //object with money, cpu, internet, and files[] elements
 		
@@ -264,13 +277,13 @@ class Quest {
 	}
 	start(){
 		//What runs when we start the quest
-		game.player.mail.add(this.from, this.subject, this.body);
+		game.player.mail.send(this.email);
 	}
 	win(){
 		//If the quest is complete, give the rewards
 		if(this.complete) return; //disables repeat of the same quest
 
-		console.log("Quest '" + this.subject + "' complete");
+		console.log("Quest '" + this.email.subject + "' complete");
 		game.player.stats.money += this.rewards.money;
 		game.player.stats.cpu_speed += this.rewards.cpu;
 		game.player.stats.internet_speed += this.rewards.internet;
@@ -313,6 +326,18 @@ class Computer {
 }
 class NPC extends Computer {
 	// used to create servers / NPCs
+	/* 
+	 * Information needed on generation:
+	 * 
+	 * ip									--> A unique ipv4 address
+	 * items[] 						--> A list of the items object in the class File, name, id, lvl
+	 * password_strength	--> How high the player's password list needs to be to crack the password
+	 * motd								--> Message of the day, displayed on ssh connection
+	 * trace_time					--> How long the player has before they are traced and lose, in milliseconds. -1 disables trace
+	 * is_cracked					--> If the password is known to the player or not
+	 * password						--> The password of the NPC's server
+	 * prompt_text				--> The player's prompt when they run commands on the NPC's server
+	 */
 	constructor(ip, items, password_strength, motd, trace_time, is_cracked, password, prompt_text) {
 		super(ip, items, password, password_strength, motd, prompt_text);
 		this.trace_time = trace_time;
@@ -368,10 +393,10 @@ class NPC extends Computer {
 		//uploads file to player after a set time due to internet speed
 		//file must exist and is checked by the calling function (remote_cmd)
 		game.ui.display("Download started.");
-		await game.sleep(game.defaults.DOWNLOAD_TIME_MS - (game.defaults.DOWNLOAD_TIME_MS * game.player.stats.internet_speed)); //sleeps based off internet speed
 		var file = this.files.storage[file_index];
+		await game.sleep(game.defaults.DOWNLOAD_TIME_MS - (game.defaults.DOWNLOAD_TIME_MS * game.player.stats.internet_speed)); //sleeps based off internet speed
 		if(file.id == game.data.item_ids.system_file && game.player.files.find(file.name) != -1){
-			//if the player already has this file...skip so the HDD is not full of unremoveable files
+			//if the player already has this file...skip so the HDD is not full of unremoveable system files
 			console.log("System file already on players HDD, skipping");
 		} else {
 			game.player.files.add({name: file.name, id: file.id, lvl: file.lvl});
@@ -395,7 +420,7 @@ class Player extends Computer {
 	constructor(name){
 		const items = [{name: "ping", id: game.data.item_ids.system_file, lvl: 0.0}, {name: "hydra", id: game.data.item_ids.system_file, lvl: 0.0}, 
 			{name: "mail", id: game.data.item_ids.system_file, lvl: 0.0}, {name: "README.txt", id: game.data.item_ids.junk, lvl: 0.0}, 
-			{name: "common.passwords.0.1.csv", id: game.data.item_ids.passsword_list, lvl: 0.1}];
+			{name: "common.passwords.0.1.csv", id: game.data.item_ids.password_list, lvl: 0.1}];
 		super(game.npcs.generate_ip(), items, "1337_H@x3r_42069", 0.9, name + "'s PC", game.defaults.DEFAULT_PLAYER_PROMPT, "<span class='prompt'>", "</span>", true);
 		this.name = name;
 		this.stats = new Stats(game.defaults.STARTING_MONEY, game.defaults.STARTING_CPU_SPEED, game.defaults.STARTING_INTERNET_SPEED);
@@ -664,7 +689,7 @@ var game = {
 			'quest_item'		: 1,
 			'log'						: 2,
 			'data'					: 3,
-			'passsword_list': 4,
+			'password_list': 4,
 			'firewall'			: 5,
 			'encrypter' 		: 6,
 			'decrypter' 		: 7,
@@ -903,6 +928,17 @@ var game = {
 	},
 	quests : {
 		available: [], //available quests
+		
+		ids: {
+			// Quest IDs
+			'Welcome'		: 0,
+			'Crawl'			: 1,
+			'Walk'			: 2,
+			'Run'				: 3,
+			'Sprint'		: 4
+		},
+		
+		//emails, should have the same ID as the quest
 		from: {
 			0: "ya-boi"
 		},
@@ -915,42 +951,63 @@ var game = {
 			0: "I am glad you finally decided to use your skills!\nFirst things first, lets get you a professional firewall. Hack into our high school's router and download the cuda.0.1.fw program. Do NOT forget to delete logs! To connect to the server, first run <span class='cmd'>hydra [ip]</span> to crack the ssh password, then get the password from your email. Once you have the password, run the command <span class='cmd'>ssh [ip]</span>, type in the password, do the command <span class='cmd'>get cuda.0.1.fw</span>, THEN run <span class='cmd'>rm access.log</span>, then <span class='cmd'>exit</span>\nIt is not currently school hours so they will not run an IP trace on you. EZPZ"
 		},
 		
-		ids: {
-			'Welcome'		: 0,
-			'Crawl'			: 1,
-			'Walk'			: 2,
-			'Run'				: 3,
-			'Sprint'		: 4
-		},
-		
 		run(id){
 			//handles quests
+			
+			var reward = {
+				//reward object: money, cpu, internet, add_files[{name, id, lvl}], and del_files[] elements
+				money: 0.0,
+				cpu: 0.0,
+				internet: 0.0,
+				add_files : [],
+				del_files : []
+			};
+			var check = function(){
+				// conditions that must be true to complete the quest
+				console.log("Quest not initalized");
+				return false;
+			};
+			var email = {
+				from: "(null)",
+				subject: "",
+				body: ""
+			};
+			
 			switch(id){
 				case 0:
-					//reward object: money, cpu, internet, add_files[{name, id, lvl}], and del_files[] elements
-					//from, subject, body, reward, check
+					//First quest
+					
+					// Generate Quest Server
+					// needs: ip, items[], password_strength, motd, trace_time, is_cracked, password, prompt_text
 					const quest_item = "cuda.0.1.fw";
 					let ip = game.npcs.generate_ip();
-					let items = [{name: quest_item, id: game.data.item_ids.quest_item, lvl: 0.1}, {name: "todo.doc", id: game.data.item_ids.junk, lvl: 0.0}];
+					let items = [{name: quest_item, id: game.data.item_ids.quest_item, lvl: 0.1}, 
+					{name: "todo.doc", id: game.data.item_ids.junk, lvl: 0.0}];
 					let motd = "Region High School - Welcome to the home of the Wild Cats";
-					let new_npc = new NPC(ip, items, 0.1, motd, -1, false, "G0_W1ldC@t$!");
+					let new_npc = new NPC(ip, items, 0.01, motd, -1, false, "G0_W1ldC@t$!");
 					game.npcs.servers.push(new_npc);
-					const reward = {
-						money: 100.0,
-						cpu: 0.0,
-						internet: 0.0,
-						add_files : [{name: quest_item, id: game.data.item_ids.firewall, lvl: 0.1}],
-						del_files : [quest_item]
-					};
-					const check = function(){
-						// conditions that must be true to complete the quest
-						return (game.player.files.find(quest_item) > -1);
-					};
-					let q = new Quest(this.from[id], this.subject[id], this.body[id] + "\n IP: " + ip, reward, check);
-					this.available.push(q);
-					q.start();
+					
+					// Create email to the user explaining the quest
+					email.from = this.from[id];
+					email.subject = this.subject[id];
+					email.body = this.body[id] + "\n IP: " + ip;
+					
+					// Create the reward for the quest
+					reward.money = 100.0;
+					reward.add_files = [{name: quest_item, id: game.data.item_ids.firewall, lvl: 0.1}];
+					reward.del_files = [quest_item];
+					
+					// Create the conditions of which the quest is complete (must return true/false)
+					check = function(){ return (game.player.files.find(quest_item) > -1); };
+					
 					break;
+					default:
+						console.log("Quest '" + id + "' not found!");
+						return;
 			}
+			let q = new Quest(email, reward, check);
+			this.available.push(q);
+			q.start();
 		},
 
 		check(){
@@ -959,7 +1016,7 @@ var game = {
 				if(this.available[i].complete == false && this.available[i].check() == true){
 					this.available[i].win();
 					//TODO add more details on winnings and add custom award message
-					game.player.mail.add(this.available[i].from, "Re: " + this.available[i].subject, 
+					game.player.mail.add(this.available[i].from, "Re: " + this.available[i].email.subject, 
 							`Good job, here is your reward:\n Money: ${this.available[i].rewards.money}\n`);
 					//TODO start next quest
 					//TODO remove quest NPC
